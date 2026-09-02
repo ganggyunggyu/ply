@@ -100,3 +100,11 @@ export const findService = (query: string): ServiceEntry | null => {
 /** 시스템 프롬프트에 넣을 한 줄 요약들 */
 export const catalogSummary = () =>
   SERVICE_CATALOG.map((s) => `- ${s.name} (${s.key}): ${s.url} — ${s.description}`).join('\n');
+
+/** key -> url. 사용자의 실제 배포 주소를 코드가 아니라 설정에서 받는다. */
+export const applyServiceUrls = (overrides: Record<string, string>) => {
+  SERVICE_CATALOG.forEach((service) => {
+    const url = overrides[service.key];
+    if (typeof url === 'string' && url.trim()) service.url = url.trim();
+  });
+};

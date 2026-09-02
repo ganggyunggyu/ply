@@ -3,7 +3,7 @@ import type { AccountStore } from './accounts';
 import { generateText, type ToolSpec } from './openrouter';
 import { CONFIRM, ERRORS, PROGRESS } from './messages';
 import {
-  AGENT_SYSTEM_PROMPT as SYSTEM_PROMPT,
+  buildAgentSystemPrompt,
   buildManuscriptPrompt,
   MANUSCRIPT_SYSTEM,
   PARAM_DESCRIPTIONS as PARAM,
@@ -824,4 +824,4 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
   ];
 };
 
-export const AGENT_SYSTEM_PROMPT = SYSTEM_PROMPT;
+export { buildAgentSystemPrompt };

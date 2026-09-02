@@ -1,7 +1,8 @@
 import { app, BaseWindow, WebContentsView, ipcMain, safeStorage, session, shell } from 'electron';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { createAccountStore, type SecretCrypto } from './accounts';
-import { createNaverTools, AGENT_SYSTEM_PROMPT } from './agent-tools';
+import { createNaverTools, buildAgentSystemPrompt } from './agent-tools';
 import {
   DEFAULT_CDP_PORT,
   PANEL_WIDTH,
@@ -17,6 +18,7 @@ import { loginDabut } from './hub';
 import { createSettingsStore } from './settings';
 import { createTabManager, type BrowserState, type TabManager } from './tabs';
 import { ERRORS } from './messages';
+import { applyServiceUrls } from './services';
 
 app.setName('gng-browser');
 app.setPath('userData', join(app.getPath('appData'), 'gng-browser'));
@@ -37,6 +39,19 @@ const electronCrypto: SecretCrypto = {
 };
 
 const configDir = () => join(app.getPath('userData'), 'config');
+
+/** 서비스 주소는 저장소에 두지 않는다. config/services.json 이 있으면 그걸로 덮는다.
+ *  { "dabut-api": "https://...", "exposure-dashboard": "https://..." } 모양이다. */
+const loadServiceUrls = () => {
+  const filePath = join(configDir(), 'services.json');
+  if (!existsSync(filePath)) return;
+
+  try {
+    applyServiceUrls(JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, string>);
+  } catch (error) {
+    console.error(ERRORS.settingsFileUnreadable, error);
+  }
+};
 
 let mainWindow: BaseWindow | null = null;
 let chromeView: WebContentsView | null = null;
@@ -255,7 +270,7 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
     const messages = await runAgentLoop({
       client,
       model: agentModel,
-      system: AGENT_SYSTEM_PROMPT,
+      system: buildAgentSystemPrompt(),
       tools,
       history: [...history, { role: 'user', content: userMessage }],
       onEvent,
@@ -351,6 +366,7 @@ const registerIpcHandlers = () => {
 };
 
 const handleReady = () => {
+  loadServiceUrls();
   registerIpcHandlers();
   createWindow();
 

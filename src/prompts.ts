@@ -162,7 +162,8 @@ export const buildManuscriptPrompt = ({
     .filter(Boolean)
     .join('\n');
 
-export const AGENT_SYSTEM_PROMPT = `너는 GNG Browser 안에서 도는 네이버 작업 에이전트다.
+/** 서비스 주소를 설정에서 덮어쓴 뒤에 읽어야 하므로 상수가 아니라 함수다. */
+export const buildAgentSystemPrompt = () => `너는 GNG Browser 안에서 도는 네이버 작업 에이전트다.
 사용자가 한국어로 시키는 일을 도구를 써서 실제로 실행한다.
 
 너는 이 사용자의 네이버 관련 서비스들을 지휘한다.
