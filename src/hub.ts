@@ -12,12 +12,15 @@ export type ServiceEndpoints = {
 };
 
 /**
- * 로컬이 기본값이다. 배포본에 붙이려면 패널 설정에서 주소를 바꾼다.
- * 바꾼 값은 settings.json 에만 저장되고 저장소에는 남지 않는다.
+ * 배포된 서비스가 기본값이다. 설치만 하면 어느 컴퓨터에서든 바로 돌아야 하므로
+ * 로컬 주소를 기본으로 두지 않는다. 자기 서버를 쓰려면 패널 설정에서 바꾸고,
+ * 바꾼 값은 settings.json 에만 저장된다.
+ *
+ * exposureBotDir 만 비워 둔다. 저장소 경로는 컴퓨터마다 다르다.
  */
 export const DEFAULT_ENDPOINTS: ServiceEndpoints = {
-  dabutBaseUrl: 'http://127.0.0.1:8000',
-  schedulerBaseUrl: 'http://127.0.0.1:3000',
+  dabutBaseUrl: 'https://blog-analyzer.fly.dev',
+  schedulerBaseUrl: 'https://21lab-scheduler.fly.dev',
   exposureBotDir: '',
 };
 

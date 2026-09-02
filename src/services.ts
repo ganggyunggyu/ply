@@ -2,12 +2,13 @@
  * 에이전트가 탭으로 여는 화면 카탈로그.
  * "노출지기 열어줘" 를 알아들으려면 주소를 미리 알고 있어야 한다.
  *
- * 공개 저장소라서 주소는 전부 example.com 플레이스홀더로 둔다.
- * 자기 배포 주소는 코드가 아니라 패널 설정에서 넣는다. settings.json 의 serviceUrls 로 저장되고
- * 부팅할 때 applyServiceUrls 가 이 카탈로그를 덮는다. 저장소에는 남지 않는다.
+ * 배포된 주소가 기본값이다. 설치만 하면 어느 컴퓨터에서든 바로 돌아야 하므로
+ * 비워 두지 않는다. 다른 서버를 쓰려면 패널 설정에서 덮어쓰고,
+ * 덮어쓴 값은 settings.json 의 serviceUrls 에만 남는다.
+ * 부팅할 때 applyServiceUrls 가 그 값으로 이 카탈로그를 덮는다.
  *
- * 사용자가 주소를 안 넣은 항목은 '미설정' 이다. 플레이스홀더는 실제로 열리는 주소라서
- * 그대로 열면 조용히 틀린 결과가 된다. 미설정 항목은 프롬프트와 도구에서 통째로 빠진다.
+ * 주소가 빈 항목은 '미설정' 이라 프롬프트와 도구에서 통째로 빠진다.
+ * 기본값이 채워져 있으므로 사용자가 일부러 지우지 않는 한 그럴 일은 없다.
  *
  * 도구가 직접 호출하는 API 서버(다붓 백엔드, 블로그 스케줄러)는 여기 없다.
  * 그쪽 주인은 hub.ts 의 ServiceEndpoints 하나뿐이다. 같은 주소를 두 군데 두지 않는다.
@@ -34,7 +35,7 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
   {
     key: 'exposure-dashboard',
     name: '노출지기',
-    url: 'https://exposure.example.com',
+    url: 'https://blog-cron-bot-production.up.railway.app',
     kind: 'ui',
     auth: 'cookie',
     description: '네이버 검색 노출체크 대시보드. 키워드 시트 관리와 실행 결과를 본다.',
@@ -42,7 +43,7 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
   {
     key: 'dabut-app',
     name: '다붓',
-    url: 'https://dabut.example.com',
+    url: 'https://21lab-ai-agent.vercel.app',
     kind: 'ui',
     auth: 'cookie',
     description: 'AI 원고 생성 웹앱. 프로젝트별 지침과 원고 이력을 본다.',
@@ -50,7 +51,7 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
   {
     key: 'sheet-app',
     name: '시트앱',
-    url: 'https://sheet.example.com',
+    url: 'https://21lab-sheet-app.vercel.app',
     kind: 'ui',
     auth: 'cookie',
     description: '구글시트 연동 관리 화면.',
@@ -58,7 +59,7 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
   {
     key: 'image-generator',
     name: '이미지 생성기',
-    url: 'https://image.example.com',
+    url: 'https://image-generator-weld-two.vercel.app',
     kind: 'ui',
     auth: 'cookie',
     description: '원고에 넣을 이미지를 만든다.',
@@ -66,7 +67,7 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
   {
     key: 'cafe-bot',
     name: '카페봇',
-    url: 'https://cafe-bot.example.com',
+    url: 'https://cafe-bot-two.vercel.app',
     kind: 'ui',
     auth: 'cookie',
     description: '네이버 카페 글·댓글 자동화 대시보드.',
