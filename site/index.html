@@ -1262,8 +1262,10 @@
       const url = assetUrl(anchor.dataset.file);
 
       if (!url) {
-        anchor.href = '#install';
+        // 마크업의 기본 href 가 릴리스 목록이다. #install 로 덮으면 버튼이
+        // 자기가 들어있는 섹션을 가리켜서 눌러도 제자리 스크롤만 된다.
         anchor.classList.add('is-soon');
+        anchor.removeAttribute('download');
         return;
       }
 
