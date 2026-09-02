@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GNG Sidebar</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="./sidebar.css" />
+  </head>
+  <body>
+    <div class="sidebar">
+      <div class="drag-strip"></div>
+
+      <div class="profile-bar">
+        <button id="profile-button" class="profile-button">
+          <span id="profile-dot" class="dot"></span>
+          <span id="profile-name" class="profile-name"></span>
+          <span class="chev">⌄</span>
+        </button>
+        <button id="new-tab" class="icon" id="new-tab-label">＋</button>
+      </div>
+
+      <div id="profile-menu" class="profile-menu" hidden></div>
+
+      <nav class="lists">
+        <section>
+          <div class="group-head">
+            <span id="lbl-tabs" class="group-title"></span>
+            <span id="tab-count" class="group-count"></span>
+          </div>
+          <ul id="tab-list" class="list"></ul>
+        </section>
+
+        <section id="agent-section" hidden>
+          <button id="agent-head" class="group-head as-button">
+            <span id="lbl-agent-tabs" class="group-title"></span>
+            <span id="agent-count" class="group-count"></span>
+            <span id="agent-chev" class="chev">⌄</span>
+          </button>
+          <ul id="agent-list" class="list"></ul>
+        </section>
+      </nav>
+
+      <footer class="sidebar-foot">
+        <button id="toggle-panel" class="foot-button"></button>
+        <span id="cdp" class="cdp"></span>
+      </footer>
+    </div>
+
+    <script src="./sidebar.js"></script>
+  </body>
+</html>

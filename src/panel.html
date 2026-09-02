@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GNG Agent</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <div class="panel">
+      <header class="panel-head">
+        <strong id="panel-title"></strong>
+        <button id="settings-toggle" class="ghost"></button>
+      </header>
+
+      <section id="settings" class="settings" hidden>
+        <label class="field">
+          <span id="lbl-apikey"></span>
+          <div class="row">
+            <input id="api-key" type="password" data-ph="apiKeyPlaceholder" autocomplete="off" />
+            <button id="save-key" class="primary"></button>
+          </div>
+          <small id="key-status"></small>
+        </label>
+
+        <label class="field">
+          <span id="lbl-agent-model"></span>
+          <select id="agent-model"></select>
+        </label>
+
+        <label class="field">
+          <span id="lbl-writer-model"></span>
+          <select id="writer-model"></select>
+        </label>
+
+        <div class="field">
+          <span id="lbl-endpoints"></span>
+          <div class="row">
+            <input id="ep-dabut" type="text" data-ph="dabutPlaceholder" autocomplete="off" />
+          </div>
+          <div class="row">
+            <input id="ep-scheduler" type="text" data-ph="schedulerPlaceholder" autocomplete="off" />
+          </div>
+          <div class="row">
+            <input id="ep-exposure" type="text" data-ph="exposurePlaceholder" autocomplete="off" />
+            <button id="save-endpoints" class="primary"></button>
+          </div>
+          <small id="endpoint-status" class="hint"></small>
+        </div>
+
+        <div class="field">
+          <span id="lbl-scheduler"></span>
+          <div class="row">
+            <input id="sch-user" type="text" data-ph="serviceUserPlaceholder" autocomplete="off" />
+          </div>
+          <div class="row">
+            <input id="sch-pass" type="password" data-ph="servicePassPlaceholder" autocomplete="off" />
+            <button id="sch-login" class="primary"></button>
+          </div>
+          <small id="sch-status" class="hint"></small>
+        </div>
+
+        <div class="field">
+          <span id="lbl-accounts"></span>
+          <ul id="account-list" class="account-list"></ul>
+          <div class="row">
+            <input id="account-label" type="text" data-ph="accountLabelPlaceholder" />
+          </div>
+          <div class="row">
+            <input id="account-id" type="text" data-ph="accountIdPlaceholder" autocomplete="off" />
+          </div>
+          <div class="row">
+            <input id="account-pw" type="password" data-ph="accountPwPlaceholder" autocomplete="off" />
+            <button id="add-account" class="primary"></button>
+          </div>
+          <small id="account-hint" class="hint"></small>
+        </div>
+      </section>
+
+      <div id="log" class="log"></div>
+
+      <form id="composer" class="composer">
+        <textarea
+          id="prompt"
+          rows="2"
+          data-ph="composerPlaceholder"
+        ></textarea>
+        <div class="composer-foot">
+          <div class="chips">
+            <button id="chip-model" type="button" class="chip" title=""></button>
+            <span id="chip-services" class="chip chip-status"></span>
+          </div>
+          <button id="send" type="submit" class="send"></button>
+        </div>
+      </form>
+    </div>
+
+    <script src="./panel.js"></script>
+  </body>
+</html>

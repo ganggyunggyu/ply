@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GNG Browser</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <link rel="stylesheet" href="./renderer.css" />
+  </head>
+  <body>
+    <div class="toolbar">
+      <div class="nav">
+        <button id="back" class="icon-button" id="back-label">‹</button>
+        <button id="forward" class="icon-button" id="fwd-label">›</button>
+        <button id="reload" class="icon-button" id="reload-label">⟳</button>
+      </div>
+
+      <div class="address-wrap">
+        <span id="profile-chip" class="profile-chip"></span>
+        <input
+          id="address"
+          class="address"
+          type="text"
+          spellcheck="false"
+          autocomplete="off"
+          data-ph="addressPlaceholder"
+        />
+      </div>
+
+      <button id="toggle-panel" class="icon-button" id="panel-toggle-label">
+        ◧
+      </button>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
