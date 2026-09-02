@@ -159,6 +159,26 @@ small,
   font-size: 11.5px;
 }
 
+.service-url-name {
+  flex: none;
+  width: 88px;
+  align-self: center;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-url-row input.invalid {
+  box-shadow: 0 0 0 1.5px #d4383d;
+}
+
+.service-url-empty {
+  color: var(--faint);
+  font-size: 11.5px;
+}
+
 /* ---------- log ---------- */
 
 .log {

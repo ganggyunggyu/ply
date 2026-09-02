@@ -1,6 +1,6 @@
 import { renderMarkdown } from './markdown';
 import { formatToolOutput } from './tool-output';
-import { SERVICE_CATALOG } from './services';
+import { isServiceUrl, normalizeServiceUrl } from './url';
 import { CHAT, EMPTY_STATE, ONBOARDING, PANEL, SETTINGS } from './messages';
 import type {
   AgentEventView,
@@ -9,6 +9,7 @@ import type {
   ModelPresetView,
   NaverAccount,
   PublicSettings,
+  ServiceCatalogItemView,
 } from './bridge';
 
 type ModelPreset = ModelPresetView;
@@ -34,6 +35,9 @@ const epSchedulerEl = document.getElementById('ep-scheduler') as HTMLInputElemen
 const epExposureEl = document.getElementById('ep-exposure') as HTMLInputElement;
 const saveEndpointsEl = document.getElementById('save-endpoints') as HTMLButtonElement;
 const endpointStatusEl = document.getElementById('endpoint-status') as HTMLElement;
+const serviceUrlListEl = document.getElementById('service-urls') as HTMLElement;
+const saveServiceUrlsEl = document.getElementById('save-service-urls') as HTMLButtonElement;
+const serviceUrlStatusEl = document.getElementById('service-url-status') as HTMLElement;
 const chipModelEl = document.getElementById('chip-model') as HTMLButtonElement;
 const chipServicesEl = document.getElementById('chip-services') as HTMLSpanElement;
 const schUserEl = document.getElementById('sch-user') as HTMLInputElement;
@@ -51,6 +55,9 @@ let history: ChatMessage[] = [];
 let running = false;
 let hasApiKey = false;
 let pendingMessage: string | null = null;
+/** 렌더러는 카탈로그를 빌드타임에 모른다. 설정 IPC 로 받아 여기에 담는다. */
+let serviceCatalog: ServiceCatalogItemView[] = [];
+const serviceUrlInputs = new Map<string, HTMLInputElement>();
 
 /** Electron IPC 가 붙이는 "Error invoking remote method 'x': Error: " 접두사를 걷어낸다. */
 const readableError = (error: unknown) => {
@@ -316,6 +323,54 @@ const renderAccounts = (accounts: NaverAccount[]) => {
     empty.textContent = SETTINGS.accountsEmpty;
     accountListEl.append(empty);
   }
+};
+
+const handleServiceUrlInput = (event: Event) => {
+  (event.currentTarget as HTMLInputElement).classList.remove('invalid');
+};
+
+const renderServiceUrls = (services: ServiceCatalogItemView[]) => {
+  serviceUrlInputs.clear();
+
+  serviceUrlListEl.replaceChildren(
+    ...services.map(({ key, name, url, defaultUrl, custom, description }) => {
+      const row = document.createElement('div');
+      row.className = 'row service-url-row';
+
+      const label = document.createElement('span');
+      label.className = 'service-url-name';
+      label.textContent = name;
+      label.title = description;
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.autocomplete = 'off';
+      input.placeholder = defaultUrl;
+      input.value = custom ? url : '';
+      input.addEventListener('input', handleServiceUrlInput);
+
+      serviceUrlInputs.set(key, input);
+      row.append(label, input);
+
+      return row;
+    }),
+  );
+
+  if (services.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'service-url-empty';
+    empty.textContent = SETTINGS.serviceUrlsEmpty;
+    serviceUrlListEl.append(empty);
+  }
+};
+
+/**
+ * 카탈로그가 바뀔 수 있는 곳에서만 부른다 (init, 주소 저장).
+ * 다른 설정 저장에서 부르면 사용자가 치고 있던 주소가 날아간다.
+ */
+const applySettings = (settings: PublicSettings) => {
+  serviceCatalog = settings.services;
+  renderServiceUrls(settings.services);
 };
 
 const setRunning = (next: boolean) => {
@@ -644,17 +699,28 @@ const requestServiceLogin = (lead: string) => {
   });
 };
 
+/** 주소를 안 넣은 서비스는 빼둔다. 칩을 눌렀는데 example.com 이 열리면 그건 버그로 보인다. */
+const cookieLoginServices = () =>
+  serviceCatalog.filter(({ auth, kind, custom }) => auth === 'cookie' && kind === 'ui' && custom);
+
 const requestCookieLogin = () => {
+  const services = cookieLoginServices();
+
+  if (services.length === 0) {
+    appendEntry(CHAT.roleAgent, ONBOARDING.readyWithoutServices);
+    return;
+  }
+
   appendCard({
     lead: ONBOARDING.askCookieLogin,
     fields: [],
     submitLabel: ONBOARDING.accountSkipLabel,
     skipLabel: '',
     hint: ONBOARDING.cookieLoginDone,
-    chips: SERVICE_CATALOG.filter((s) => s.auth === 'cookie' && s.kind === 'ui').map((service) => ({
-      label: service.name,
+    chips: services.map(({ name, url }) => ({
+      label: name,
       onPick: () => {
-        void api.createTab({ url: service.url });
+        void api.createTab({ url });
       },
     })),
     onSubmit: async () => {
@@ -715,6 +781,49 @@ const handleSaveEndpoints = async () => {
     void refreshServiceChip();
   } catch (error) {
     endpointStatusEl.textContent = readableError(error);
+  }
+};
+
+/** 전부 아니면 전무. 한 칸이라도 틀리면 IPC 를 아예 안 보낸다. */
+const handleSaveServiceUrls = async () => {
+  const next: Record<string, string> = {};
+  const invalid: ServiceCatalogItemView[] = [];
+
+  serviceCatalog.forEach((service) => {
+    const input = serviceUrlInputs.get(service.key);
+    if (!input) return;
+
+    const value = normalizeServiceUrl(input.value);
+    input.value = value;
+    input.classList.remove('invalid');
+
+    if (value && !isServiceUrl(value)) {
+      input.classList.add('invalid');
+      invalid.push(service);
+      return;
+    }
+
+    next[service.key] = value;
+  });
+
+  const [first] = invalid;
+
+  if (first) {
+    serviceUrlStatusEl.textContent = SETTINGS.serviceUrlInvalid(first.name);
+    serviceUrlInputs.get(first.key)?.focus();
+    return;
+  }
+
+  saveServiceUrlsEl.disabled = true;
+
+  try {
+    applySettings(await api.setServiceUrls(next));
+    serviceUrlStatusEl.textContent = SETTINGS.serviceUrlsSaved;
+    void refreshServiceChip();
+  } catch (error) {
+    serviceUrlStatusEl.textContent = readableError(error);
+  } finally {
+    saveServiceUrlsEl.disabled = false;
   }
 };
 
@@ -848,6 +957,9 @@ const applyStaticLabels = () => {
   set('lbl-writer-model', PANEL.writerModelField);
   set('lbl-endpoints', PANEL.endpointsField);
   set('save-endpoints', PANEL.endpointsSaveLabel);
+  set('lbl-services', PANEL.serviceUrlsField);
+  set('save-service-urls', PANEL.serviceUrlsSaveLabel);
+  set('service-url-status', SETTINGS.serviceUrlsHint);
   set('lbl-scheduler', SETTINGS.serviceLoginField);
   set('sch-login', SETTINGS.serviceLoginLabel);
   set('lbl-accounts', PANEL.accountsField);
@@ -884,6 +996,7 @@ const init = async () => {
   endpointStatusEl.textContent = settings.endpoints.exposureBotDir
     ? SETTINGS.endpointsSaved
     : SETTINGS.exposurePathMissing;
+  applySettings(settings);
 
   renderChips(settings);
   renderSchedulerStatus(settings);
@@ -922,6 +1035,7 @@ saveKeyEl.addEventListener('click', handleSaveKey);
 agentModelEl.addEventListener('change', handleAgentModelChange);
 writerModelEl.addEventListener('change', handleWriterModelChange);
 saveEndpointsEl.addEventListener('click', handleSaveEndpoints);
+saveServiceUrlsEl.addEventListener('click', handleSaveServiceUrls);
 schLoginEl.addEventListener('click', handleSchedulerLogin);
 schPassEl.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') void handleSchedulerLogin();

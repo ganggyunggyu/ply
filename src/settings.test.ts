@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import type { SecretCrypto } from './accounts';
 import { DEFAULT_AGENT_MODEL, DEFAULT_WRITER_MODEL } from './models';
 import { DEFAULT_ENDPOINTS } from './hub';
+import { resolveServices, SERVICE_CATALOG } from './services';
 import { createSettingsStore } from './settings';
 
 const crypto = (available = true): SecretCrypto => ({
@@ -20,8 +21,23 @@ const makeStore = (secret: SecretCrypto = crypto()) => {
   const dir = mkdtempSync(join(tmpdir(), 'gng-settings-'));
   dirs.push(dir);
   const filePath = join(dir, 'settings.json');
-  return { store: createSettingsStore({ filePath, crypto: secret }), filePath };
+  return { store: createSettingsStore({ filePath, crypto: secret }), filePath, dir };
 };
+
+const writeLegacy = (dir: string, body: string) => {
+  const legacyPath = join(dir, 'services.json');
+  writeFileSync(legacyPath, body, 'utf-8');
+
+  return legacyPath;
+};
+
+/** 카탈로그 전역이 아니라 순수 해석 함수에서 기본값을 얻는다. 이 파일은 전역을 건드리지 않는다. */
+const DEFAULTS = resolveServices({});
+
+const defaultUrlOf = (key: string) => DEFAULTS.find((s) => s.key === key)?.defaultUrl ?? '';
+
+const urlOf = (services: { key: string; url: string }[], key: string) =>
+  services.find((s) => s.key === key)?.url ?? '';
 
 after(() => {
   dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true }));
@@ -107,4 +123,113 @@ test('모델만 바꿔도 키가 남아있다', () => {
   assert.equal(settings.agentModel, 'z-ai/glm-4.7');
   assert.equal(settings.writerModel, DEFAULT_WRITER_MODEL);
   assert.equal(store.readApiKey(), 'sk-or-v1-secret');
+});
+
+test('서비스 주소 기본값은 빈 오버라이드와 코드 주소를 준다', () => {
+  const { store } = makeStore();
+  const { serviceUrls, services } = store.get();
+
+  assert.deepEqual(serviceUrls, {});
+  assert.equal(services.length, SERVICE_CATALOG.length);
+  services.forEach(({ key, url, custom }) => {
+    assert.equal(url, defaultUrlOf(key));
+    assert.equal(custom, false);
+  });
+});
+
+test('서비스 주소를 저장하면 해석된 카탈로그에 반영된다', () => {
+  const { store } = makeStore();
+  const { serviceUrls, services } = store.setServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+
+  assert.equal(serviceUrls['cafe-bot'], 'https://cafe.internal');
+  assert.equal(urlOf(services, 'cafe-bot'), 'https://cafe.internal');
+  assert.equal(services.find((s) => s.key === 'cafe-bot')?.custom, true);
+
+  services
+    .filter(({ key }) => key !== 'cafe-bot')
+    .forEach(({ key, url }) => assert.equal(url, defaultUrlOf(key)));
+
+  assert.deepEqual(store.readServiceUrls(), { 'cafe-bot': 'https://cafe.internal' });
+});
+
+test('서비스 주소를 부분 저장해도 병합되고 다른 설정을 건드리지 않는다', () => {
+  const { store } = makeStore();
+  store.setApiKey('sk-or-v1-secret');
+  store.setServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+
+  const { serviceUrls, endpoints } = store.setServiceUrls({ 'sheet-app': 'https://sheet.internal' });
+
+  assert.equal(serviceUrls['cafe-bot'], 'https://cafe.internal');
+  assert.equal(serviceUrls['sheet-app'], 'https://sheet.internal');
+  assert.equal(store.readApiKey(), 'sk-or-v1-secret');
+  assert.deepEqual(endpoints, DEFAULT_ENDPOINTS);
+});
+
+test('빈 값은 오버라이드를 지우고 기본값으로 되돌린다', () => {
+  const { store } = makeStore();
+  store.setServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+
+  const { serviceUrls, services } = store.setServiceUrls({ 'cafe-bot': '   ' });
+
+  assert.equal(Object.hasOwn(serviceUrls, 'cafe-bot'), false);
+  assert.equal(urlOf(services, 'cafe-bot'), defaultUrlOf('cafe-bot'));
+  assert.deepEqual(serviceUrls, {});
+});
+
+test('모르는 서비스 key 는 저장하지 않는다', () => {
+  const { store } = makeStore();
+  const { serviceUrls, services } = store.setServiceUrls({ 'nope-service': 'https://x.internal' });
+
+  assert.equal(Object.hasOwn(serviceUrls, 'nope-service'), false);
+  assert.equal(services.length, SERVICE_CATALOG.length);
+});
+
+test('예전 services.json 을 설정으로 옮기고 파일은 남긴다', () => {
+  const { store, dir, filePath } = makeStore();
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+
+  const { serviceUrls, services } = store.migrateServiceUrls(legacyPath);
+
+  assert.equal(serviceUrls['cafe-bot'], 'https://legacy.internal');
+  assert.equal(urlOf(services, 'cafe-bot'), 'https://legacy.internal');
+  assert.equal(existsSync(legacyPath), true);
+  assert.equal(readFileSync(filePath, 'utf-8').includes('https://legacy.internal'), true);
+  assert.equal(store.get().serviceUrls['cafe-bot'], 'https://legacy.internal');
+});
+
+test('이미 저장된 주소가 있으면 이관하지 않는다', () => {
+  const { store, dir } = makeStore();
+  store.setServiceUrls({ 'cafe-bot': 'https://mine.internal' });
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+
+  assert.equal(store.migrateServiceUrls(legacyPath).serviceUrls['cafe-bot'], 'https://mine.internal');
+});
+
+test('전부 지운 뒤에도 예전 파일을 다시 읽지 않는다', () => {
+  const { store, dir } = makeStore();
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+  store.migrateServiceUrls(legacyPath);
+  store.setServiceUrls({ 'cafe-bot': '' });
+
+  assert.deepEqual(store.migrateServiceUrls(legacyPath).serviceUrls, {});
+});
+
+test('깨진 예전 파일은 던지지 않고 다음 기회를 남긴다', () => {
+  const { store, dir, filePath } = makeStore();
+  const legacyPath = writeLegacy(dir, '{oops');
+
+  assert.deepEqual(store.migrateServiceUrls(legacyPath).serviceUrls, {});
+  assert.equal(existsSync(filePath) && readFileSync(filePath, 'utf-8').includes('serviceUrls'), false);
+});
+
+test('이관이 비밀값을 날리지 않는다', () => {
+  const { store, dir } = makeStore();
+  store.setApiKey('sk-or-v1-secret');
+  store.setSchedulerToken('jwt-token-value', '테스트계정');
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+
+  store.migrateServiceUrls(legacyPath);
+
+  assert.equal(store.readApiKey(), 'sk-or-v1-secret');
+  assert.equal(store.readSchedulerToken(), 'jwt-token-value');
 });

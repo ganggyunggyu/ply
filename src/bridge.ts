@@ -16,6 +16,20 @@ export type ServiceEndpointsView = {
   exposureBotDir: string;
 };
 
+export type ServiceCatalogItemView = {
+  key: string;
+  name: string;
+  /** 지금 실제로 쓰이는 주소. 사용자가 넣은 게 있으면 그것, 없으면 defaultUrl */
+  url: string;
+  /** 코드에 박힌 기본값. 입력칸 placeholder 로 쓴다 */
+  defaultUrl: string;
+  /** 사용자가 덮어썼는가 */
+  custom: boolean;
+  kind: 'ui' | 'api';
+  auth: 'none' | 'bearer' | 'cookie';
+  description: string;
+};
+
 export type PublicSettings = {
   hasApiKey: boolean;
   hasSchedulerToken: boolean;
@@ -23,6 +37,8 @@ export type PublicSettings = {
   agentModel: string;
   writerModel: string;
   endpoints: ServiceEndpointsView;
+  serviceUrls: Record<string, string>;
+  services: ServiceCatalogItemView[];
 };
 
 export type ModelPresetView = {
@@ -91,6 +107,7 @@ export type BridgeApi = {
   answerAgent: (id: number, answer: string) => Promise<boolean>;
   getEndpoints: () => Promise<ServiceEndpointsView>;
   setEndpoints: (next: Partial<ServiceEndpointsView>) => Promise<PublicSettings>;
+  setServiceUrls: (next: Record<string, string>) => Promise<PublicSettings>;
   loginDabut: (input: { username: string; password: string }) => Promise<PublicSettings>;
   logoutDabut: () => Promise<PublicSettings>;
   answerDabutLogin: (id: number, result: string) => Promise<boolean>;

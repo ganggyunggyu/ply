@@ -3,10 +3,11 @@
  * 에이전트가 "노출지기 열어줘" 같은 말을 알아들으려면 주소를 미리 알고 있어야 한다.
  *
  * 공개 저장소라서 주소는 전부 example.com 플레이스홀더로 둔다.
- * 자기 배포 주소를 쓰려면 이 파일의 url 만 자기 것으로 바꾼다. 커밋하지 않는 게 좋다.
+ * 자기 배포 주소는 코드가 아니라 패널 설정에서 넣는다. settings.json 의 serviceUrls 로 저장되고
+ * 부팅할 때 applyServiceUrls 가 이 카탈로그를 덮는다. 저장소에는 남지 않는다.
  *
  * 다붓 백엔드와 스케줄러는 여기가 아니라 hub.ts 의 DEFAULT_ENDPOINTS 를 쓰고,
- * 그 값은 패널 설정에서 덮어써서 settings.json 에 저장된다. 저장소에 남지 않는다.
+ * 그 값도 같은 settings.json 에 저장된다.
  */
 
 export type ServiceAuth =
@@ -85,6 +86,39 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
   },
 ];
 
+/** 모듈이 처음 로드된 시점의 코드 기본값. applyServiceUrls 가 되돌릴 기준점이다. */
+const DEFAULT_SERVICE_URLS: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(SERVICE_CATALOG.map(({ key, url }) => [key, url])),
+);
+
+export const SERVICE_KEYS: readonly string[] = SERVICE_CATALOG.map(({ key }) => key);
+
+/** 사용자가 설정에서 채운 주소가 붙은 카탈로그 항목. 패널이 이 모양으로 받는다. */
+export type ResolvedService = ServiceEntry & {
+  /** services.ts 의 코드 기본값. 입력칸 placeholder 로 쓴다 */
+  defaultUrl: string;
+  /** 사용자가 덮어썼는가 */
+  custom: boolean;
+};
+
+/** 손으로 고친 설정 파일에 문자열이 아닌 값이 들어와도 죽지 않게 한다. */
+const overrideOf = (key: string, overrides: Record<string, string>) => {
+  const value = overrides[key];
+  return typeof value === 'string' ? value.trim() : '';
+};
+
+const resolveUrl = (key: string, overrides: Record<string, string>) =>
+  overrideOf(key, overrides) || DEFAULT_SERVICE_URLS[key] || '';
+
+/** 순수 함수. 카탈로그를 건드리지 않고 해석된 사본을 만든다. */
+export const resolveServices = (overrides: Record<string, string>): ResolvedService[] =>
+  SERVICE_CATALOG.map((service) => {
+    const defaultUrl = DEFAULT_SERVICE_URLS[service.key] ?? '';
+    const override = overrideOf(service.key, overrides);
+
+    return { ...service, url: override || defaultUrl, defaultUrl, custom: Boolean(override) };
+  });
+
 export const findService = (query: string): ServiceEntry | null => {
   const needle = query.trim().toLowerCase();
   if (!needle) return null;
@@ -101,10 +135,12 @@ export const findService = (query: string): ServiceEntry | null => {
 export const catalogSummary = () =>
   SERVICE_CATALOG.map((s) => `- ${s.name} (${s.key}): ${s.url} — ${s.description}`).join('\n');
 
-/** key -> url. 사용자의 실제 배포 주소를 코드가 아니라 설정에서 받는다. */
+/**
+ * key -> url. 사용자의 실제 배포 주소를 코드가 아니라 설정에서 받는다.
+ * 조건 없이 항상 대입한다. 빈 오버라이드로 부르면 전부 코드 기본값으로 되돌아간다.
+ */
 export const applyServiceUrls = (overrides: Record<string, string>) => {
   SERVICE_CATALOG.forEach((service) => {
-    const url = overrides[service.key];
-    if (typeof url === 'string' && url.trim()) service.url = url.trim();
+    service.url = resolveUrl(service.key, overrides);
   });
 };

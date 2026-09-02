@@ -1,5 +1,4 @@
 import { app, BaseWindow, WebContentsView, ipcMain, safeStorage, session, shell } from 'electron';
-import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { createAccountStore, type SecretCrypto } from './accounts';
 import { createNaverTools, buildAgentSystemPrompt } from './agent-tools';
@@ -40,18 +39,8 @@ const electronCrypto: SecretCrypto = {
 
 const configDir = () => join(app.getPath('userData'), 'config');
 
-/** 서비스 주소는 저장소에 두지 않는다. config/services.json 이 있으면 그걸로 덮는다.
- *  { "dabut-api": "https://...", "exposure-dashboard": "https://..." } 모양이다. */
-const loadServiceUrls = () => {
-  const filePath = join(configDir(), 'services.json');
-  if (!existsSync(filePath)) return;
-
-  try {
-    applyServiceUrls(JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, string>);
-  } catch (error) {
-    console.error(ERRORS.settingsFileUnreadable, error);
-  }
-};
+/** 예전 버전이 쓰던 파일. 지금은 settings.json 으로 한 번 옮기고 백업으로만 남긴다. */
+const LEGACY_SERVICE_URLS_FILE = 'services.json';
 
 let mainWindow: BaseWindow | null = null;
 let chromeView: WebContentsView | null = null;
@@ -131,6 +120,13 @@ const accountStore = () =>
 
 const settingsStore = () =>
   createSettingsStore({ filePath: join(configDir(), 'settings.json'), crypto: electronCrypto });
+
+/** 서비스 주소는 저장소에 두지 않는다. 설정에 저장된 값으로 카탈로그를 덮는다. */
+const loadServiceUrls = () => {
+  const store = settingsStore();
+  store.migrateServiceUrls(join(configDir(), LEGACY_SERVICE_URLS_FILE));
+  applyServiceUrls(store.readServiceUrls());
+};
 
 const broadcastState = (state: BrowserState) => {
   chromeView?.webContents.send('browser:state', state);
@@ -361,6 +357,13 @@ const registerIpcHandlers = () => {
   ipcMain.handle('services:setEndpoints', (_event, next: Record<string, string>) =>
     settingsStore().setEndpoints(next),
   );
+
+  ipcMain.handle('services:setUrls', (_event, next: Record<string, string>) => {
+    const settings = settingsStore().setServiceUrls(next ?? {});
+    applyServiceUrls(settings.serviceUrls);
+
+    return settings;
+  });
 
   ipcMain.handle('cdp:info', () => ({ port: cdpPort }));
 };

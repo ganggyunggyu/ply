@@ -33,6 +33,7 @@ const browserApi = {
   answerAgent: (id: number, answer: string) => ipcRenderer.invoke('agent:answer', id, answer),
   getEndpoints: () => ipcRenderer.invoke('services:endpoints'),
   setEndpoints: (next: Record<string, string>) => ipcRenderer.invoke('services:setEndpoints', next),
+  setServiceUrls: (next: Record<string, string>) => ipcRenderer.invoke('services:setUrls', next),
   loginDabut: (input: { username: string; password: string }) =>
     ipcRenderer.invoke('service:login', input),
   logoutDabut: () => ipcRenderer.invoke('service:logout'),
