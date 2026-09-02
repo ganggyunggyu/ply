@@ -75,7 +75,33 @@ export type AgentEventView =
 
 export type ChatMessageView = { role: string; content: unknown; tool_calls?: unknown };
 
-export type AgentQuestion = { id: number; question: string; choices?: string[] };
+export type QuestionFieldType = 'text' | 'number' | 'date' | 'time';
+
+/**
+ * 보기 하나. label 은 사용자가 보는 글자, value 는 모델에게 돌아가는 값이다.
+ * 둘이 다를 수 있다: 프로젝트는 라벨을 보여주고 id 를 돌려줘야 한다.
+ * 라벨만 돌려주면 모델이 id 를 기억으로 복원해야 하고, 라벨이 비슷하면 다른 프로젝트로 나간다.
+ */
+export type QuestionChoice = { label: string; value: string };
+
+/** 폼형 질문의 칸 하나. choices 가 있으면 select, 없으면 input 으로 그린다. */
+export type QuestionField = {
+  key: string;
+  label: string;
+  placeholder?: string;
+  type?: QuestionFieldType;
+  choices?: QuestionChoice[];
+  value?: string;
+  optional?: boolean;
+};
+
+/** fields 가 있으면 폼으로, 없으면 기존 자유입력 카드로 그린다. */
+export type AgentQuestion = {
+  id: number;
+  question: string;
+  choices?: string[];
+  fields?: QuestionField[];
+};
 
 export type BridgeApi = {
   getState: () => Promise<BrowserStateView>;

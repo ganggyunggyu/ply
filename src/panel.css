@@ -899,3 +899,51 @@ button.chip:hover {
 .card-chips button:disabled {
   opacity: 0.45;
 }
+
+/* ---------- 폼형 질문 (ask_user_form) ---------- */
+
+.card-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 7px 14px;
+}
+
+.card-field + .card-field {
+  border-top: 1px solid var(--line);
+}
+
+/* 패널이 좁아 라벨을 자르면 어느 칸인지 알 수 없다. 폭은 고정하고 줄바꿈을 허용한다. */
+.card-field > span {
+  flex: none;
+  width: 92px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* .card-form input 오버라이드는 input 에만 걸려 있어서 select 가 전역 알약 스타일을 그대로 먹는다. */
+.card-field input,
+.card-field select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13.5px;
+}
+
+.card-field input:focus,
+.card-field select:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.card-field.invalid > span,
+.card-field.invalid input,
+.card-field.invalid select {
+  color: #d4383d;
+}

@@ -12,3 +12,12 @@ export const SEARCH_URL = 'https://www.google.com/search?q=';
 export const DEFAULT_CDP_PORT = 18830;
 
 export const PANEL_WIDTH = 396;
+
+/** 폼 질문을 사용자가 닫았다는 표시. 사용자가 입력한 값과 겹치지 않게 예약어로 둔다. */
+export const QUESTION_FORM_CANCEL = '__cancelled__';
+
+/**
+ * 폼 칸에 허용하는 입력 방식. password 는 일부러 뺐다.
+ * 폼 답은 answerAgent 를 타고 모델에게 그대로 간다. 비밀번호는 dabut_login 경로로만 흐른다.
+ */
+export const QUESTION_FIELD_TYPES = ['text', 'number', 'date', 'time'] as const;

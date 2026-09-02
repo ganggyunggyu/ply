@@ -64,6 +64,14 @@ export const CHAT = {
   toolFailed: (name: string) => `${name} 실패`,
   stoppedTooLong: '여기까지 하고 멈췄어요. 다시 시켜주시겠어요?',
   answerExpired: '답변을 기다리는 시간이 지나서 이 질문은 이미 닫혔어요. 다시 시켜주세요.',
+  formSubmitLabel: '확인',
+  formCancelLabel: '취소',
+  formHint: '고른 값으로 바로 이어서 할게요.',
+  formChoiceNone: '고르지 않음',
+  formChoicePick: '고르기',
+  formCancelled: '이번 건은 취소했어요.',
+  formFieldRequired: (label: string) => `${label} 칸을 채워주세요.`,
+  formBadInput: (label: string) => `${label} 칸의 값을 다시 확인해 주세요.`,
 } as const;
 
 export const PANEL = {
@@ -179,16 +187,75 @@ export const ERRORS = {
 /** 승인 토큰은 자기참조가 안 되니 모듈 상수로 뺀다. */
 const DELETE_YES = '네, 삭제할게요';
 
+/**
+ * 예약 취소 토큰. DELETE_YES 와 반드시 달라야 한다.
+ * 값이 겹치면 글 삭제 승인이 예약 취소 승인으로 새거나 그 반대가 된다.
+ */
+const CANCEL_YES = '네, 예약을 취소할게요';
+
+/** 이미 발행된 건이 섞여 있을 때만 붙인다. 취소해도 올라간 글은 내려가지 않는다. */
+const cancelSchedulePublishedNote = (count: number) =>
+  `이 중 ${count}건은 이미 발행됐어요. 올라간 글은 내려가지 않고 예약 기록만 취소로 바뀌어요.`;
+
+/** 목록 줄에 들어갈 수 있는 최대 길이. 한 항목이 카드를 통째로 밀어내지 못하게 한다. */
+const CONFIRM_FIELD_MAX = 120;
+
+/**
+ * 확인 카드는 줄 단위로 읽힌다. 그런데 여기 들어오는 제목·키워드는 네이버와 스케줄러에서 온
+ * 남의 문자열이고, 개행이 그대로 통과하면 목록에 없던 줄을 만들거나 마지막 안내 줄 뒤에
+ * 안심시키는 문장을 붙일 수 있다. 패널이 textContent 로 그려서 HTML 주입은 안 되지만
+ * 줄 구조 위조는 되므로, 카드에 넣기 전에 공백류를 한 칸으로 접는다.
+ */
+const confirmField = (raw: string): string => {
+  const folded = String(raw).replace(/\s+/g, ' ').trim();
+
+  return folded.length > CONFIRM_FIELD_MAX ? `${folded.slice(0, CONFIRM_FIELD_MAX)}…` : folded;
+};
+
 export const CONFIRM = {
   deleteYes: DELETE_YES,
   deleteNo: '취소',
   deleteLine: (index: number, title: string, addDate: string, logNo: string) =>
-    `${index}. ${title} — ${addDate} (${logNo})`,
+    `${index}. ${confirmField(title)} — ${confirmField(addDate)} (${confirmField(logNo)})`,
   deleteQuestion: (blogId: string, lines: string[]) =>
     [
-      `${blogId} 블로그에서 아래 글을 영구 삭제해요. 네이버는 복구를 지원하지 않아요.`,
+      `${confirmField(blogId)} 블로그에서 아래 글을 영구 삭제해요. 네이버는 복구를 지원하지 않아요.`,
       ...lines,
       `지우려면 "${DELETE_YES}" 를 눌러주세요. 다른 답은 전부 취소로 처리해요.`,
+    ].join('\n'),
+
+  cancelScheduleYes: CANCEL_YES,
+  // "취소" 는 예약 취소 화면에서 중의적이라 쓰지 않는다. 예약을 취소하는 건지 대화를 접는 건지 헷갈린다.
+  cancelScheduleNo: '그대로 둘게요',
+  cancelSchedulePublished: cancelSchedulePublishedNote,
+  cancelScheduleLine: (index: number, keyword: string, scheduledAt: string, status: string) =>
+    `${index}. ${confirmField(keyword)} — ${confirmField(scheduledAt)} (${confirmField(status)})`,
+  /** 예약이 내 다붓 계정 목록에 없을 때. 마스킹한 id 는 "내 계정 중 하나" 로 읽히므로 대신 이걸 쓴다. */
+  cancelScheduleForeignAccount: '내 계정 목록에 없는 계정이에요',
+  cancelScheduleQuestion: ({
+    scheduleId,
+    scheduleDate,
+    account,
+    lines,
+    stoppable,
+    published,
+  }: {
+    scheduleId: string;
+    scheduleDate: string;
+    account: string;
+    lines: string[];
+    /** 실제로 발행을 막을 수 있는 건수. 이미 끝났거나 실패한 건은 취소해도 달라지지 않는다. */
+    stoppable: number;
+    published: number;
+  }) =>
+    [
+      stoppable > 0
+        ? `${account} 계정의 ${scheduleDate} 예약 ${stoppable}건을 취소해요. 그 시각에 글이 올라가지 않아요. (예약에 담긴 전체는 ${lines.length}건이에요.)`
+        : `${account} 계정의 ${scheduleDate} 예약 ${lines.length}건을 취소로 표시해요. 남은 발행 예정이 없어서 실제로 멈추는 글은 없어요.`,
+      ...lines,
+      ...(published > 0 ? [cancelSchedulePublishedNote(published)] : []),
+      `되돌리는 기능이 없어서 다시 걸려면 처음부터 등록해야 해요. (${confirmField(scheduleId)})`,
+      `취소하려면 "${CANCEL_YES}" 를 눌러주세요. 다른 답은 전부 그대로 두기로 처리해요.`,
     ].join('\n'),
 } as const;
 
@@ -209,6 +276,10 @@ export const PROGRESS = {
   deleteConfirmWaiting: (count: number) => `삭제 확인 대기 중: ${count}건`,
   deleting: (title: string) => `삭제 중: ${title}`,
   deleteVerifying: (title: string) => `삭제 확인 중: ${title}`,
+  scheduleListLoading: '예약 목록 읽는 중',
+  scheduleDetailLoading: (scheduleId: string) => `예약 내용 읽는 중: ${scheduleId}`,
+  scheduleCancelConfirmWaiting: (scheduleId: string) => `예약 취소 확인 대기 중: ${scheduleId}`,
+  scheduleCancelling: (scheduleId: string) => `예약 취소 중: ${scheduleId}`,
   pnpmViaShell: '셸을 거쳐 pnpm 을 찾는 중',
   pnpmFound: (path: string) => `pnpm: ${path}`,
 } as const;

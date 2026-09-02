@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { ERRORS, PROGRESS, SERVICE_LABELS } from './messages';
+import type { ImageSource, ManuscriptType } from './scheduler-enums';
 
 export type ServiceEndpoints = {
   dabutBaseUrl: string;
@@ -195,6 +196,14 @@ export type SchedulerAccount = {
   id: string;
   name?: string;
   blogId?: string;
+  /**
+   * 네이버 로그인 id. 이 값이 곧 Schedule 문서의 accountId 다.
+   * (createSchedule 은 resolveQueueAccount 가 푼 credential.loginId 를 accountId 로 쓴다.)
+   *
+   * /api/blog-accounts 는 다붓 JWT 의 소유자로 스코프된 유일한 읽기라서, 여기서 나온 loginId 집합이
+   * "내 예약" 을 판별할 수 있는 단 하나의 근거다. GET/DELETE /schedules 에는 소유자 스코프가 없다.
+   */
+  loginId?: string;
 };
 
 /** 스케줄러 로그인. 비밀번호는 여기서만 쓰고 저장하지 않는다. 토큰만 돌려준다. */
@@ -233,6 +242,7 @@ export const listSchedulerAccounts = async (
     id: String(row.id ?? row._id ?? ''),
     name: row.name ? String(row.name) : undefined,
     blogId: row.blogId ? String(row.blogId) : undefined,
+    loginId: row.loginId ? String(row.loginId) : row.login_id ? String(row.login_id) : undefined,
   }));
 };
 
@@ -305,47 +315,339 @@ export const generateManuscriptViaProject = async ({
   };
 };
 
-export type AutoScheduleQueue = {
-  account: { id: string };
-  keywords: string[];
-  blog_name?: string;
+/**
+ * 항목별 override. keywords 와 길이가 같아야 하고, 다르면 스케줄러가
+ * HTTP 200 + { success: false } 로 조용히 실패한다.
+ * projectId 는 최상위 project_id 를 이긴다 (schedule.route.ts 의 applyItemOptions).
+ */
+export type AutoScheduleItemOption = {
+  businessName?: string;
+  manuscriptType?: ManuscriptType;
+  projectId?: string;
 };
 
-export const autoSchedulePosts = async ({
-  baseUrl,
+/**
+ * 스케줄러는 account.id 를 네이버 로그인 id 로만 취급한다 (findAccountById).
+ * /api/blog-accounts 가 준 값은 Mongo ObjectId 라서 id 로 보내면
+ * "Account credentials not provided" 로 떨어진다. dabutAccountId 로 보내야
+ * 다붓 크리덴셜 복호화 경로를 탄다 (resolveQueueAccount).
+ */
+export type AutoScheduleQueue = {
+  account: { dabutAccountId?: string; id?: string; blogId?: string };
+  keywords: string[];
+  blog_name?: string;
+  item_options?: AutoScheduleItemOption[];
+};
+
+export type AutoScheduleInput = {
+  scheduleDate: string;
+  queues: AutoScheduleQueue[];
+  postsPerDay?: number;
+  startHour?: number;
+  intervalMinutes?: number;
+  manuscriptType?: ManuscriptType;
+  imageSource?: ImageSource;
+  keywordCategory?: string;
+  projectId?: string;
+};
+
+/**
+ * /bot/auto-schedule 의 pythonCompatSchema 는 최상위가 전부 snake_case 다.
+ * zod 가 non-strict 라 이름이 어긋난 키는 400 없이 조용히 버려진다.
+ * 그래서 이 변환을 한 곳에 모아두고 테스트로 이름을 고정한다.
+ */
+export const buildAutoScheduleBody = ({
   scheduleDate,
   queues,
   postsPerDay,
   startHour,
   intervalMinutes,
   manuscriptType,
+  imageSource,
   keywordCategory,
-  token,
-}: {
-  baseUrl: string;
-  token?: string;
-  scheduleDate: string;
-  queues: AutoScheduleQueue[];
-  postsPerDay?: number;
-  startHour?: number;
-  intervalMinutes?: number;
-  manuscriptType?: string;
-  keywordCategory?: string;
-}) => {
+  projectId,
+}: AutoScheduleInput): Record<string, unknown> => {
   const body: Record<string, unknown> = { schedule_date: scheduleDate, queues };
 
   if (postsPerDay !== undefined) body.posts_per_day = postsPerDay;
   if (startHour !== undefined) body.start_hour = startHour;
   if (intervalMinutes !== undefined) body.interval_minutes = intervalMinutes;
   if (manuscriptType) body.manuscript_type = manuscriptType;
+  if (imageSource) body.image_source = imageSource;
   if (keywordCategory) body.keyword_category = keywordCategory;
+  if (projectId) body.project_id = projectId;
 
-  const { data } = await axios.post(`${baseUrl}/bot/auto-schedule`, body, {
+  return body;
+};
+
+export const autoSchedulePosts = async ({
+  baseUrl,
+  token,
+  ...input
+}: AutoScheduleInput & { baseUrl: string; token?: string }) => {
+  const { data } = await axios.post(`${baseUrl}/bot/auto-schedule`, buildAutoScheduleBody(input), {
     timeout: 120_000,
     headers: bearer(token),
   });
 
   return data as unknown;
+};
+
+export type AutoScheduleOutcome = {
+  ok: boolean;
+  message: string;
+  totalJobs: number;
+  reused: boolean;
+  /** 등록된 예약의 id. get_schedule 로 저장값을 되읽는 유일한 실마리라 따로 뽑아 둔다. */
+  scheduleIds: string[];
+};
+
+/**
+ * /bot/auto-schedule 은 실패해도 HTTP 200 을 준다. 계정 크리덴셜 복호화 실패나
+ * item_options 길이 불일치는 axios 가 던지지 않고 { success: false, message } 로 돌아온다.
+ * 그래서 status 가 아니라 본문을 봐야 실패를 안다.
+ *
+ * reused 는 같은 지문의 기존 예약을 그대로 돌려줬다는 뜻이다. 새 잡이 생기지 않았으므로
+ * 완료로 보고하면 안 된다. 스케줄러의 지문에는 project_id 가 빠져 있어서, 프로젝트만 바꿔
+ * 다시 걸면 여기로 떨어지고 변경이 반영되지 않는다.
+ */
+export const readAutoScheduleResult = (data: unknown): AutoScheduleOutcome => {
+  const body = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>;
+  const schedules = Array.isArray(body.schedules) ? body.schedules : [];
+  const totalJobs = Number(body.totalJobs);
+
+  return {
+    ok: body.success === true,
+    message: typeof body.message === 'string' ? body.message : '',
+    totalJobs: Number.isFinite(totalJobs) ? totalJobs : 0,
+    reused: schedules.some((row) => (row as Record<string, unknown> | null)?.reused === true),
+    scheduleIds: schedules
+      .map((row) => {
+        const { scheduleId, id, _id } = (row ?? {}) as Record<string, unknown>;
+
+        return scheduleId === undefined || scheduleId === null
+          ? String(id ?? _id ?? '')
+          : String(scheduleId);
+      })
+      .filter((id) => id !== ''),
+  };
+};
+
+export type ScheduleSummary = {
+  id: string;
+  accountId: string;
+  scheduleDate: string;
+  status: string;
+  totalJobs: number;
+  completedJobs: number;
+  failedJobs: number;
+  /** 계정별로 나눠 받은 목록을 다시 최신순으로 합칠 때만 쓴다. 모델에게는 내보내지 않는다. */
+  createdAt: string;
+};
+
+export type ScheduleJobDetail = {
+  id: string;
+  keyword: string;
+  scheduledAt: string;
+  status: string;
+  projectId: string;
+  manuscriptType: string;
+  businessName: string;
+  postUrl: string;
+  error: string;
+};
+
+export type ScheduleDetail = {
+  schedule: ScheduleSummary | null;
+  jobs: ScheduleJobDetail[];
+};
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+
+const asText = (value: unknown) => (value === undefined || value === null ? '' : String(value));
+
+const asCount = (value: unknown) => {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/** 스케줄러는 mongoose 문서를 그대로 직렬화한다. 키가 id 가 아니라 _id 이고, set 안 된 필드는 아예 없다. */
+export const toScheduleSummary = (raw: unknown): ScheduleSummary => {
+  const { id, _id, accountId, scheduleDate, status, totalJobs, completedJobs, failedJobs, createdAt } =
+    asRecord(raw);
+
+  return {
+    id: asText(id ?? _id),
+    accountId: asText(accountId),
+    scheduleDate: asText(scheduleDate),
+    status: asText(status),
+    totalJobs: asCount(totalJobs),
+    completedJobs: asCount(completedJobs),
+    failedJobs: asCount(failedJobs),
+    createdAt: asText(createdAt),
+  };
+};
+
+/**
+ * job 하나를 읽는다. projectId 를 살려 내는 것이 이 함수의 존재 이유다.
+ * 예약에 원고 프로젝트가 저장되지 않으면 그 필드가 JSON 에 아예 없어서 빈 문자열이 되고,
+ * 빈 문자열 자체가 "저장 안 됨" 이라는 확인 결과다. 여기서 임의로 채우지 않는다.
+ */
+export const toScheduleJobDetail = (raw: unknown): ScheduleJobDetail => {
+  const { id, _id, keyword, scheduledAt, status, projectId, manuscriptType, businessName, postUrl, error } =
+    asRecord(raw);
+
+  return {
+    id: asText(id ?? _id),
+    keyword: asText(keyword),
+    scheduledAt: asText(scheduledAt),
+    status: asText(status),
+    projectId: asText(projectId),
+    manuscriptType: asText(manuscriptType),
+    businessName: asText(businessName),
+    postUrl: asText(postUrl),
+    error: asText(error),
+  };
+};
+
+export const readScheduleList = (data: unknown): ScheduleSummary[] => {
+  const { schedules } = asRecord(data);
+  const rows = Array.isArray(data) ? data : Array.isArray(schedules) ? schedules : [];
+
+  return rows.map(toScheduleSummary).filter(({ id }) => id !== '');
+};
+
+export const readScheduleDetail = (data: unknown): ScheduleDetail => {
+  const { schedule, jobs } = asRecord(data);
+  const summary = schedule ? toScheduleSummary(schedule) : null;
+
+  return {
+    schedule: summary && summary.id ? summary : null,
+    jobs: Array.isArray(jobs) ? jobs.map(toScheduleJobDetail) : [],
+  };
+};
+
+/**
+ * GET /schedules 의 accountId 는 마스킹 없이 네이버 로그인 id 원문이다.
+ * (등록 응답만 스케줄러가 가려서 준다.) 화면과 모델에 그대로 흘리지 않는다.
+ */
+export const maskAccountId = (raw: string): string => {
+  const value = raw.trim();
+  if (!value) return '';
+  if (value.length <= 3) return `${value.slice(0, 1)}***`;
+
+  return `${value.slice(0, 3)}***`;
+};
+
+/**
+ * 예약 목록. 최근 50건 고정이고 페이지네이션이 없다.
+ * 필터는 accountId 와 status 둘뿐이며, 다른 키를 넣어도 zod 가 non-strict 라 조용히 버려진다.
+ */
+export const listSchedules = async ({
+  baseUrl,
+  token,
+  accountId,
+  status,
+}: {
+  baseUrl: string;
+  token?: string;
+  accountId?: string;
+  status?: string;
+}): Promise<ScheduleSummary[]> => {
+  const params: Record<string, string> = {};
+  if (accountId) params.accountId = accountId;
+  if (status) params.status = status;
+
+  const { data } = await axios.get(`${baseUrl}/schedules`, {
+    timeout: 15_000,
+    headers: bearer(token),
+    params,
+  });
+
+  return readScheduleList(data);
+};
+
+/**
+ * 예약 하나의 상세. jobs 에만 keyword·scheduledAt·projectId 가 있고 목록에는 없다.
+ * _id 가 String 으로 재정의돼 있어서 sch_ 접두사를 붙인 값을 그대로 경로에 넣는다.
+ */
+export const getSchedule = async ({
+  baseUrl,
+  token,
+  scheduleId,
+}: {
+  baseUrl: string;
+  token?: string;
+  scheduleId: string;
+}): Promise<ScheduleDetail> => {
+  const { data } = await axios.get(`${baseUrl}/schedules/${encodeURIComponent(scheduleId)}`, {
+    timeout: 15_000,
+    headers: bearer(token),
+  });
+
+  return readScheduleDetail(data);
+};
+
+export const readCancelScheduleResult = (data: unknown): { ok: boolean; id: string } => {
+  const { success, id } = asRecord(data);
+
+  return { ok: success === true, id: asText(id) };
+};
+
+/**
+ * 삭제가 아니라 소프트 취소다. 큐에서 잡을 빼고 job/schedule 의 status 를 cancelled 로 바꾼다.
+ * 문서는 남아 get_schedule 로 계속 읽히지만, 되살리는 엔드포인트는 없다.
+ * (POST /schedules/:id/execute 는 pending·generating 만 다시 큐에 넣는다.)
+ * 큐 잡 제거를 job 마다 도는 라우트라 읽기보다 넉넉히 기다린다.
+ */
+export const cancelSchedule = async ({
+  baseUrl,
+  token,
+  scheduleId,
+}: {
+  baseUrl: string;
+  token?: string;
+  scheduleId: string;
+}): Promise<{ ok: boolean; id: string }> => {
+  const { data } = await axios.delete(`${baseUrl}/schedules/${encodeURIComponent(scheduleId)}`, {
+    timeout: 60_000,
+    headers: bearer(token),
+  });
+
+  return readCancelScheduleResult(data);
+};
+
+const errorFieldLine = (row: unknown): string => {
+  const { field, message } = (row ?? {}) as Record<string, unknown>;
+
+  return [field, message].filter((part): part is string => typeof part === 'string' && part !== '').join(': ');
+};
+
+/**
+ * 스케줄러의 400 본문은 { message, fields: [{ field, message }] } 라 무엇이 틀렸는지 알려준다.
+ * axios 예외 메시지만 올리면 "Request failed with status code 400" 만 남아 모델이 고칠 수 없다.
+ */
+/**
+ * axios 는 404 를 던진다. 그래서 "없는 예약" 은 `schedule === null` 이 아니라 예외로 온다.
+ * 이걸 구분하지 않으면 id 가 틀렸을 때 "id 를 다시 확인하라" 가 아니라 "읽지 못했다" 만 남아
+ * 모델이 복구 방법을 모른다.
+ */
+export const isScheduleNotFound = (error: unknown): boolean =>
+  (error as { response?: { status?: number } } | null)?.response?.status === 404;
+
+export const describeSchedulerError = (error: unknown): string => {
+  const base = error instanceof Error ? error.message : String(error);
+  const data = (error as { response?: { data?: unknown } } | null)?.response?.data;
+
+  if (!data || typeof data !== 'object') return base;
+
+  const { message, fields } = data as Record<string, unknown>;
+  const detail = typeof message === 'string' ? message : '';
+  const lines = Array.isArray(fields) ? fields.map(errorFieldLine).filter(Boolean) : [];
+
+  return [base, detail, ...lines].filter(Boolean).join(' | ');
 };
 
 export type CommandResult = {

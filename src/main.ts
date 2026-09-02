@@ -1,6 +1,7 @@
 import { app, BaseWindow, WebContentsView, ipcMain, safeStorage, session, shell } from 'electron';
 import { join } from 'path';
 import { createAccountStore, type SecretCrypto } from './accounts';
+import type { AgentQuestion, QuestionField } from './bridge';
 import { createNaverTools, buildAgentSystemPrompt } from './agent-tools';
 import {
   DEFAULT_CDP_PORT,
@@ -96,8 +97,9 @@ const requestDabutLogin = (reason: string) =>
 
 const QUESTION_TIMEOUT_MS = 10 * 60 * 1000;
 
-/** 답을 안 하면 agentRunning 이 true 로 고착되어 앱 재시작 전까지 모든 실행이 막힌다. */
-const askUser = (question: string, choices?: string[]) =>
+/** 답을 안 하면 agentRunning 이 true 로 고착되어 앱 재시작 전까지 모든 실행이 막힌다.
+ *  그래서 자유입력과 폼이 같은 타이머·시퀀스·맵을 쓴다. */
+const pushQuestion = (payload: Omit<AgentQuestion, 'id'>) =>
   new Promise<string>((resolve, reject) => {
     questionSeq += 1;
     const id = questionSeq;
@@ -112,8 +114,13 @@ const askUser = (question: string, choices?: string[]) =>
       resolve(answer);
     });
 
-    sendToPanel('agent:question', { id, question, choices });
+    sendToPanel('agent:question', { id, ...payload });
   });
+
+const askUser = (question: string, choices?: string[]) => pushQuestion({ question, choices });
+
+/** 값이 여러 개 필요할 때. 답은 { key: value } 를 JSON 으로 직렬화한 문자열로 돌아온다. */
+const askUserForm = (question: string, fields: QuestionField[]) => pushQuestion({ question, fields });
 
 const accountStore = () =>
   createAccountStore({ filePath: join(configDir(), 'accounts.json'), crypto: electronCrypto });
@@ -256,6 +263,7 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
     getCookieNames,
     onProgress: (message) => sendToPanel('agent:progress', message),
     askUser,
+    askUserForm,
     requestDabutLogin,
   });
 

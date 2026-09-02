@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { AgentQuestion } from './bridge';
 
 const browserApi = {
   getState: () => ipcRenderer.invoke('browser:state'),
@@ -54,12 +55,8 @@ const browserApi = {
     ipcRenderer.on('agent:progress', (_event, message: string) => callback(message)),
   onAgentRunning: (callback: (running: boolean) => void) =>
     ipcRenderer.on('agent:running', (_event, running: boolean) => callback(running)),
-  onAgentQuestion: (
-    callback: (payload: { id: number; question: string; choices?: string[] }) => void,
-  ) =>
-    ipcRenderer.on('agent:question', (_event, payload: { id: number; question: string; choices?: string[] }) =>
-      callback(payload),
-    ),
+  onAgentQuestion: (callback: (payload: AgentQuestion) => void) =>
+    ipcRenderer.on('agent:question', (_event, payload: AgentQuestion) => callback(payload)),
 };
 
 contextBridge.exposeInMainWorld('gngBrowser', browserApi);
