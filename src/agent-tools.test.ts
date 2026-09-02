@@ -5,8 +5,10 @@ import type { AccountStore } from './accounts';
 import { CONFIRM, ERRORS } from './messages';
 import type { ToolSpec } from './openrouter';
 import { TOOL_RESULTS as RESULT } from './prompts';
+import { applyServiceUrls } from './services';
 import type { TabManager } from './tabs';
 import {
+  buildAgentSystemPrompt,
   clampListLimit,
   createNaverTools,
   describeToolError,
@@ -426,4 +428,73 @@ test('사용자가 답하지 않아도 ask_user 는 도구 실패로 새지 않�
   const output = await findTool(createNaverTools(context), 'ask_user').run({ question: '어느 글이요?' });
 
   assert.equal(output, RESULT.userDidNotAnswer);
+});
+
+test('주소를 안 넣은 서비스는 열지 않고 설정으로 보낸다', async (t) => {
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls({});
+
+  const { context, spy } = createStubContext();
+  const output = await findTool(createNaverTools(context), 'open_service').run({ service: '노출지기' });
+
+  assert.equal(output, RESULT.serviceNotConfigured('노출지기'));
+  assert.equal(spy.createTabCalls, 0);
+  assert.equal(output.includes('example.com'), false);
+});
+
+test('주소를 넣은 서비스는 그 주소로 연다', async (t) => {
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls({ 'exposure-dashboard': 'https://exposure.internal' });
+
+  const { context, spy } = createStubContext();
+  const output = await findTool(createNaverTools(context), 'open_service').run({ service: '노출지기' });
+
+  assert.equal(output, RESULT.serviceOpened('노출지기', 'https://exposure.internal'));
+  assert.equal(spy.createTabCalls, 1);
+});
+
+test('모르는 이름과 미설정을 다른 말로 돌려준다', async (t) => {
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls({});
+
+  const { context } = createStubContext();
+  const output = await findTool(createNaverTools(context), 'open_service').run({ service: '없는서비스' });
+
+  assert.equal(output, RESULT.serviceNotFound('없는서비스'));
+});
+
+test('list_services 는 미설정이면 목록 대신 안내를 준다', async (t) => {
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls({});
+
+  const { context } = createStubContext();
+  const output = await findTool(createNaverTools(context), 'list_services').run({});
+
+  assert.equal(output, RESULT.noServicesConfigured);
+  assert.equal(output.includes('example.com'), false);
+});
+
+test('list_services 는 주소를 넣은 것만 준다', async (t) => {
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+
+  const { context } = createStubContext();
+  const output = await findTool(createNaverTools(context), 'list_services').run({});
+  const rows = JSON.parse(output) as { key: string; url: string }[];
+
+  assert.deepEqual(rows.map(({ key }) => key), ['cafe-bot']);
+  assert.equal(rows[0]?.url, 'https://cafe.internal');
+});
+
+test('시스템 프롬프트는 미설정 주소를 싣지 않는다', async (t) => {
+  t.after(() => applyServiceUrls({}));
+
+  applyServiceUrls({});
+  assert.equal(buildAgentSystemPrompt().includes('example.com'), false);
+
+  applyServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+  const prompt = buildAgentSystemPrompt();
+
+  assert.ok(prompt.includes('https://cafe.internal'));
+  assert.equal(prompt.includes('example.com'), false);
 });

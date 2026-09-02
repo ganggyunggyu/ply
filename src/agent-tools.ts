@@ -38,7 +38,7 @@ import {
   runPackageScript,
   type ServiceEndpoints,
 } from './hub';
-import { catalogSummary, findService, SERVICE_CATALOG } from './services';
+import { configuredServices, findService, isServiceConfigured } from './services';
 import type { TabManager } from './tabs';
 
 export type ToolContext = {
@@ -518,10 +518,14 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     name: 'list_services',
     description: DESC.listServices,
     parameters: { type: 'object', properties: {}, additionalProperties: false },
-    run: async () =>
-      JSON.stringify(
-        SERVICE_CATALOG.map(({ key, name, url, kind, description }) => ({ key, name, url, kind, description })),
-      ),
+    run: async () => {
+      const services = configuredServices();
+      if (services.length === 0) return RESULT.noServicesConfigured;
+
+      return JSON.stringify(
+        services.map(({ key, name, url, kind, description }) => ({ key, name, url, kind, description })),
+      );
+    },
   };
 
   const openService: ToolSpec = {
@@ -539,6 +543,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     run: async ({ service, accountId }) => {
       const found = findService(String(service));
       if (!found) return RESULT.serviceNotFound(String(service));
+      if (!isServiceConfigured(found.key)) return RESULT.serviceNotConfigured(found.name);
 
       tabManager.createTab({
         url: found.url,

@@ -1,13 +1,16 @@
 /**
- * 연동 서비스 카탈로그.
- * 에이전트가 "노출지기 열어줘" 같은 말을 알아들으려면 주소를 미리 알고 있어야 한다.
+ * 에이전트가 탭으로 여는 화면 카탈로그.
+ * "노출지기 열어줘" 를 알아들으려면 주소를 미리 알고 있어야 한다.
  *
  * 공개 저장소라서 주소는 전부 example.com 플레이스홀더로 둔다.
  * 자기 배포 주소는 코드가 아니라 패널 설정에서 넣는다. settings.json 의 serviceUrls 로 저장되고
  * 부팅할 때 applyServiceUrls 가 이 카탈로그를 덮는다. 저장소에는 남지 않는다.
  *
- * 다붓 백엔드와 스케줄러는 여기가 아니라 hub.ts 의 DEFAULT_ENDPOINTS 를 쓰고,
- * 그 값도 같은 settings.json 에 저장된다.
+ * 사용자가 주소를 안 넣은 항목은 '미설정' 이다. 플레이스홀더는 실제로 열리는 주소라서
+ * 그대로 열면 조용히 틀린 결과가 된다. 미설정 항목은 프롬프트와 도구에서 통째로 빠진다.
+ *
+ * 도구가 직접 호출하는 API 서버(다붓 백엔드, 블로그 스케줄러)는 여기 없다.
+ * 그쪽 주인은 hub.ts 의 ServiceEndpoints 하나뿐이다. 같은 주소를 두 군데 두지 않는다.
  */
 
 export type ServiceAuth =
@@ -45,22 +48,6 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
     description: 'AI 원고 생성 웹앱. 프로젝트별 지침과 원고 이력을 본다.',
   },
   {
-    key: 'dabut-api',
-    name: '다붓 백엔드',
-    url: 'https://dabut-api.example.com',
-    kind: 'api',
-    auth: 'bearer',
-    description: '원고 생성 API. generate_manuscript_dabut 이 여기를 부른다.',
-  },
-  {
-    key: 'scheduler-api',
-    name: '블로그 스케줄러',
-    url: 'https://scheduler.example.com',
-    kind: 'api',
-    auth: 'bearer',
-    description: '예약 발행 서버. auto_schedule_posts 가 여기를 부른다.',
-  },
-  {
     key: 'sheet-app',
     name: '시트앱',
     url: 'https://sheet.example.com',
@@ -92,6 +79,12 @@ const DEFAULT_SERVICE_URLS: Readonly<Record<string, string>> = Object.freeze(
 );
 
 export const SERVICE_KEYS: readonly string[] = SERVICE_CATALOG.map(({ key }) => key);
+
+/**
+ * 사용자가 실제로 주소를 넣은 key. applyServiceUrls 가 갱신한다.
+ * 한 번도 안 불렀으면 비어 있다 = 전부 미설정. 안전한 쪽으로 틀린다.
+ */
+const configuredKeys = new Set<string>();
 
 /** 사용자가 설정에서 채운 주소가 붙은 카탈로그 항목. 패널이 이 모양으로 받는다. */
 export type ResolvedService = ServiceEntry & {
@@ -131,16 +124,29 @@ export const findService = (query: string): ServiceEntry | null => {
   );
 };
 
-/** 시스템 프롬프트에 넣을 한 줄 요약들 */
+/** 사용자가 주소를 넣었는가. 안 넣었으면 그 서비스는 열 수 없다. */
+export const isServiceConfigured = (key: string) => configuredKeys.has(key);
+
+/** 주소가 실제로 들어있는 항목만. 프롬프트와 도구는 이것만 본다. */
+export const configuredServices = (): ServiceEntry[] =>
+  SERVICE_CATALOG.filter(({ key }) => configuredKeys.has(key));
+
+/** 시스템 프롬프트에 넣을 한 줄 요약들. 미설정이면 빈 문자열이다. */
 export const catalogSummary = () =>
-  SERVICE_CATALOG.map((s) => `- ${s.name} (${s.key}): ${s.url} — ${s.description}`).join('\n');
+  configuredServices()
+    .map((s) => `- ${s.name} (${s.key}): ${s.url} — ${s.description}`)
+    .join('\n');
 
 /**
  * key -> url. 사용자의 실제 배포 주소를 코드가 아니라 설정에서 받는다.
- * 조건 없이 항상 대입한다. 빈 오버라이드로 부르면 전부 코드 기본값으로 되돌아간다.
+ * 조건 없이 항상 대입한다. 빈 오버라이드로 부르면 전부 코드 기본값으로 되돌아가고
+ * 설정된 항목도 전부 사라진다.
  */
 export const applyServiceUrls = (overrides: Record<string, string>) => {
+  configuredKeys.clear();
+
   SERVICE_CATALOG.forEach((service) => {
+    if (overrideOf(service.key, overrides)) configuredKeys.add(service.key);
     service.url = resolveUrl(service.key, overrides);
   });
 };

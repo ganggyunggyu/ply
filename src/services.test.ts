@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyServiceUrls, catalogSummary, findService, resolveServices, SERVICE_CATALOG } from './services';
+import {
+  applyServiceUrls,
+  catalogSummary,
+  configuredServices,
+  findService,
+  isServiceConfigured,
+  resolveServices,
+  SERVICE_CATALOG,
+} from './services';
+
+/** 전역 카탈로그를 만지는 테스트는 전부 이걸로 원복한다. */
+const withOverrides = (overrides: Record<string, string>, t: { after: (fn: () => void) => void }) => {
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls(overrides);
+};
 
 test('모든 항목이 https 주소를 가진다', () => {
   SERVICE_CATALOG.forEach(({ url, key }) => {
@@ -11,6 +25,13 @@ test('모든 항목이 https 주소를 가진다', () => {
 test('key 가 겹치지 않는다', () => {
   const keys = SERVICE_CATALOG.map((s) => s.key);
   assert.equal(new Set(keys).size, keys.length);
+});
+
+test('도구가 부르는 API 서버는 카탈로그에 없다', () => {
+  const keys = SERVICE_CATALOG.map((s) => s.key);
+
+  assert.equal(keys.includes('dabut-api'), false);
+  assert.equal(keys.includes('scheduler-api'), false);
 });
 
 test('이름으로 찾는다', () => {
@@ -25,9 +46,33 @@ test('모르는 이름은 null', () => {
   assert.equal(findService('  '), null);
 });
 
-test('요약에 모든 주소가 들어간다', () => {
+test('주소를 안 넣으면 아무것도 설정되지 않은 상태다', (t) => {
+  withOverrides({}, t);
+
+  assert.deepEqual(configuredServices(), []);
+  assert.equal(catalogSummary(), '');
+  SERVICE_CATALOG.forEach(({ key }) => assert.equal(isServiceConfigured(key), false));
+});
+
+test('요약에는 주소를 넣은 서비스만 들어간다', (t) => {
+  withOverrides({ 'cafe-bot': 'https://cafe.internal' }, t);
+
   const summary = catalogSummary();
-  SERVICE_CATALOG.forEach(({ url }) => assert.ok(summary.includes(url)));
+
+  assert.ok(summary.includes('https://cafe.internal'));
+  assert.equal(summary.includes('example.com'), false);
+  assert.deepEqual(configuredServices().map(({ key }) => key), ['cafe-bot']);
+  assert.equal(isServiceConfigured('cafe-bot'), true);
+  assert.equal(isServiceConfigured('sheet-app'), false);
+});
+
+test('주소를 지우면 다시 미설정으로 돌아간다', (t) => {
+  withOverrides({ 'cafe-bot': 'https://cafe.internal' }, t);
+
+  applyServiceUrls({});
+
+  assert.equal(isServiceConfigured('cafe-bot'), false);
+  assert.deepEqual(configuredServices(), []);
 });
 
 test('resolveServices 는 카탈로그를 변이시키지 않는다', () => {
@@ -37,6 +82,7 @@ test('resolveServices 는 카탈로그를 변이시키지 않는다', () => {
   assert.equal(resolved.find((s) => s.key === 'cafe-bot')?.url, 'https://cafe.internal');
   assert.equal(resolved.find((s) => s.key === 'cafe-bot')?.custom, true);
   assert.deepEqual(SERVICE_CATALOG.map(({ url }) => url), before);
+  assert.equal(isServiceConfigured('cafe-bot'), false);
 });
 
 test('applyServiceUrls 는 왕복 가능하다', (t) => {

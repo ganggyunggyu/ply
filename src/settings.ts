@@ -5,6 +5,7 @@ import { DEFAULT_ENDPOINTS, type ServiceEndpoints } from './hub';
 import { DEFAULT_AGENT_MODEL, DEFAULT_WRITER_MODEL } from './models';
 import { ERRORS } from './messages';
 import { resolveServices, SERVICE_KEYS, type ResolvedService } from './services';
+import { isServiceUrl, normalizeServiceUrl } from './url';
 
 /** 카탈로그 key -> 사용자가 넣은 주소. 기본값은 여기 담지 않는다. 기본값 주인은 services.ts 다. */
 export type ServiceUrls = Record<string, string>;
@@ -37,14 +38,38 @@ type SettingsStoreOptions = {
   crypto: SecretCrypto;
 };
 
-/** 저장 직전에만 부른다. 빈 값은 키째로 지워서 '기본값으로 되돌리기'가 되게 한다. */
+/**
+ * 저장 직전에만 부른다. 빈 값은 키째로 지워서 '기본값으로 되돌리기'가 되게 한다.
+ * 스킴 검사도 여기서 한다. 패널에만 두면 손으로 고친 settings.json 이 그대로 통과해
+ * javascript: 같은 값이 카탈로그를 거쳐 loadURL 까지 간다.
+ */
 const sanitizeServiceUrls = (input: Record<string, unknown>): ServiceUrls =>
   Object.fromEntries(
     SERVICE_KEYS.flatMap((key) => {
       const value = input[key];
-      const trimmed = typeof value === 'string' ? value.trim() : '';
+      const url = typeof value === 'string' ? normalizeServiceUrl(value) : '';
 
-      return trimmed ? [[key, trimmed] as const] : [];
+      return url && isServiceUrl(url) ? [[key, url] as const] : [];
+    }),
+  );
+
+/**
+ * 예전 services.json 은 다붓 백엔드와 스케줄러 주소도 들고 있었다.
+ * 지금 그 주소의 주인은 endpoints 하나뿐이라 카탈로그로 옮기지 않고 endpoints 의 빈칸만 채운다.
+ * 이미 저장된 endpoints 가 있으면 손대지 않는다.
+ */
+const LEGACY_ENDPOINT_KEYS: Readonly<Record<string, keyof ServiceEndpoints>> = {
+  'dabut-api': 'dabutBaseUrl',
+  'scheduler-api': 'schedulerBaseUrl',
+};
+
+const legacyEndpoints = (input: Record<string, unknown>): Partial<ServiceEndpoints> =>
+  Object.fromEntries(
+    Object.entries(LEGACY_ENDPOINT_KEYS).flatMap(([legacyKey, endpointKey]) => {
+      const value = input[legacyKey];
+      const url = typeof value === 'string' ? normalizeServiceUrl(value) : '';
+
+      return url && isServiceUrl(url) ? [[endpointKey, url] as const] : [];
     }),
   );
 
@@ -138,7 +163,14 @@ export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) 
 
     try {
       const parsed = JSON.parse(readFileSync(legacyPath, 'utf-8')) as Record<string, unknown>;
-      write({ ...current, serviceUrls: sanitizeServiceUrls(parsed) });
+
+      const endpoints = { ...legacyEndpoints(parsed), ...(current.endpoints ?? {}) };
+
+      write({
+        ...current,
+        ...(Object.keys(endpoints).length > 0 ? { endpoints } : {}),
+        serviceUrls: sanitizeServiceUrls(parsed),
+      });
     } catch (error) {
       console.error(ERRORS.settingsFileUnreadable, error);
     }

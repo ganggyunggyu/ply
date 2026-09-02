@@ -222,6 +222,48 @@ test('깨진 예전 파일은 던지지 않고 다음 기회를 남긴다', () =
   assert.equal(existsSync(filePath) && readFileSync(filePath, 'utf-8').includes('serviceUrls'), false);
 });
 
+test('스킴이 없는 주소는 저장하지 않는다', () => {
+  const { store } = makeStore();
+  const { serviceUrls, services } = store.setServiceUrls({
+    'cafe-bot': 'javascript:alert(1)',
+    'sheet-app': 'cafe.internal',
+    'dabut-app': 'https://dabut.internal/',
+  });
+
+  assert.equal(Object.hasOwn(serviceUrls, 'cafe-bot'), false);
+  assert.equal(Object.hasOwn(serviceUrls, 'sheet-app'), false);
+  assert.equal(serviceUrls['dabut-app'], 'https://dabut.internal');
+  assert.equal(urlOf(services, 'cafe-bot'), defaultUrlOf('cafe-bot'));
+});
+
+test('예전 파일의 API 주소는 카탈로그가 아니라 endpoints 빈칸을 채운다', () => {
+  const { store, dir } = makeStore();
+  const legacyPath = writeLegacy(
+    dir,
+    JSON.stringify({
+      'cafe-bot': 'https://cafe.internal',
+      'dabut-api': 'https://api.internal',
+      'scheduler-api': 'https://sch.internal',
+    }),
+  );
+
+  const { serviceUrls, endpoints } = store.migrateServiceUrls(legacyPath);
+
+  assert.equal(Object.hasOwn(serviceUrls, 'dabut-api'), false);
+  assert.equal(Object.hasOwn(serviceUrls, 'scheduler-api'), false);
+  assert.equal(endpoints.dabutBaseUrl, 'https://api.internal');
+  assert.equal(endpoints.schedulerBaseUrl, 'https://sch.internal');
+  assert.equal(endpoints.exposureBotDir, '');
+});
+
+test('이미 저장된 endpoints 는 예전 파일이 덮지 않는다', () => {
+  const { store, dir } = makeStore();
+  store.setEndpoints({ dabutBaseUrl: 'https://mine.internal' });
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'dabut-api': 'https://legacy.internal' }));
+
+  assert.equal(store.migrateServiceUrls(legacyPath).endpoints.dabutBaseUrl, 'https://mine.internal');
+});
+
 test('이관이 비밀값을 날리지 않는다', () => {
   const { store, dir } = makeStore();
   store.setApiKey('sk-or-v1-secret');

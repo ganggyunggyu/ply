@@ -1,6 +1,6 @@
 import { renderMarkdown } from './markdown';
 import { formatToolOutput } from './tool-output';
-import { isServiceUrl, normalizeServiceUrl } from './url';
+import { collectServiceUrls, connectionStates, cookieLoginServices } from './service-form';
 import { CHAT, EMPTY_STATE, ONBOARDING, PANEL, SETTINGS } from './messages';
 import type {
   AgentEventView,
@@ -39,7 +39,7 @@ const serviceUrlListEl = document.getElementById('service-urls') as HTMLElement;
 const saveServiceUrlsEl = document.getElementById('save-service-urls') as HTMLButtonElement;
 const serviceUrlStatusEl = document.getElementById('service-url-status') as HTMLElement;
 const chipModelEl = document.getElementById('chip-model') as HTMLButtonElement;
-const chipServicesEl = document.getElementById('chip-services') as HTMLSpanElement;
+const chipServicesEl = document.getElementById('chip-services') as HTMLButtonElement;
 const schUserEl = document.getElementById('sch-user') as HTMLInputElement;
 const schPassEl = document.getElementById('sch-pass') as HTMLInputElement;
 const schLoginEl = document.getElementById('sch-login') as HTMLButtonElement;
@@ -57,6 +57,8 @@ let hasApiKey = false;
 let pendingMessage: string | null = null;
 /** 렌더러는 카탈로그를 빌드타임에 모른다. 설정 IPC 로 받아 여기에 담는다. */
 let serviceCatalog: ServiceCatalogItemView[] = [];
+/** 대화 한 번에 한 번만 알린다. 매 카드마다 같은 말을 반복하지 않는다. */
+let serviceUrlsNoticed = false;
 const serviceUrlInputs = new Map<string, HTMLInputElement>();
 
 /** Electron IPC 가 붙이는 "Error invoking remote method 'x': Error: " 접두사를 걷어낸다. */
@@ -373,6 +375,18 @@ const applySettings = (settings: PublicSettings) => {
   renderServiceUrls(settings.services);
 };
 
+/**
+ * 주소를 하나도 안 넣었으면 설정으로 보낸다.
+ * 이 안내가 없으면 "노출지기 열어줘" 가 아무것도 못 열고 이유도 안 보인다.
+ */
+const noticeMissingServices = () => {
+  if (serviceUrlsNoticed) return;
+  if (serviceCatalog.some(({ custom }) => custom)) return;
+
+  serviceUrlsNoticed = true;
+  appendEntry(CHAT.roleAgent, ONBOARDING.serviceUrlsMissing);
+};
+
 const setRunning = (next: boolean) => {
   running = next;
   sendEl.disabled = next;
@@ -577,13 +591,18 @@ const requestApiKey = (lead: string) => {
         if (pendingMessage) {
           const next = pendingMessage;
           pendingMessage = null;
+          noticeMissingServices();
           void runMessage(next);
           return true;
         }
 
         const accounts = await api.listAccounts();
-        if (accounts.length === 0) requestAccount(ONBOARDING.askAccountAfterKey);
-        else appendEntry(CHAT.roleAgent, ONBOARDING.ready);
+        if (accounts.length === 0) {
+          requestAccount(ONBOARDING.askAccountAfterKey);
+        } else {
+          appendEntry(CHAT.roleAgent, ONBOARDING.ready);
+          noticeMissingServices();
+        }
 
         return true;
       } catch (error) {
@@ -699,15 +718,12 @@ const requestServiceLogin = (lead: string) => {
   });
 };
 
-/** 주소를 안 넣은 서비스는 빼둔다. 칩을 눌렀는데 example.com 이 열리면 그건 버그로 보인다. */
-const cookieLoginServices = () =>
-  serviceCatalog.filter(({ auth, kind, custom }) => auth === 'cookie' && kind === 'ui' && custom);
-
 const requestCookieLogin = () => {
-  const services = cookieLoginServices();
+  const services = cookieLoginServices(serviceCatalog);
 
   if (services.length === 0) {
-    appendEntry(CHAT.roleAgent, ONBOARDING.readyWithoutServices);
+    appendEntry(CHAT.roleAgent, ONBOARDING.ready);
+    noticeMissingServices();
     return;
   }
 
@@ -748,6 +764,22 @@ const handleSettingsToggle = () => {
   settingsEl.hidden = !settingsEl.hidden;
 };
 
+const handleModelChipClick = () => {
+  settingsEl.hidden = false;
+  agentModelEl.focus();
+};
+
+/** 칩이 곧 설정으로 가는 문이다. 주소가 비어 있을 때 갈 곳이 여기밖에 없다. */
+const handleServiceChipClick = () => {
+  settingsEl.hidden = false;
+  serviceUrlListEl.scrollIntoView({ block: 'nearest' });
+  serviceUrlInputs.values().next().value?.focus();
+};
+
+const handleSchedulerPassKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Enter') void handleSchedulerLogin();
+};
+
 const handleSaveKey = async () => {
   try {
     const settings = await api.setApiKey(apiKeyEl.value);
@@ -786,24 +818,16 @@ const handleSaveEndpoints = async () => {
 
 /** 전부 아니면 전무. 한 칸이라도 틀리면 IPC 를 아예 안 보낸다. */
 const handleSaveServiceUrls = async () => {
-  const next: Record<string, string> = {};
-  const invalid: ServiceCatalogItemView[] = [];
+  const drafts = serviceCatalog.flatMap(({ key, name }) => {
+    const input = serviceUrlInputs.get(key);
+    return input ? [{ key, name, raw: input.value }] : [];
+  });
 
-  serviceCatalog.forEach((service) => {
-    const input = serviceUrlInputs.get(service.key);
-    if (!input) return;
+  const { next, normalized, invalid } = collectServiceUrls(drafts);
 
-    const value = normalizeServiceUrl(input.value);
-    input.value = value;
-    input.classList.remove('invalid');
-
-    if (value && !isServiceUrl(value)) {
-      input.classList.add('invalid');
-      invalid.push(service);
-      return;
-    }
-
-    next[service.key] = value;
+  serviceUrlInputs.forEach((input, key) => {
+    input.value = normalized[key] ?? input.value;
+    input.classList.toggle('invalid', invalid.some((item) => item.key === key));
   });
 
   const [first] = invalid;
@@ -918,26 +942,25 @@ const renderChips = (settings: PublicSettings) => {
   chipModelEl.title = CHAT.modelChipTitle;
 };
 
+/** 설정만 읽는다. applySettings 를 부르면 사용자가 치던 주소가 날아간다. */
 const refreshServiceChip = async () => {
   try {
-    const endpoints = await api.getEndpoints();
-    const configured = [
-      endpoints.dabutBaseUrl,
-      endpoints.schedulerBaseUrl,
-      endpoints.exposureBotDir,
-    ].filter(Boolean).length;
+    const { services, endpoints } = await api.getSettings();
+    const states = connectionStates(services, endpoints.exposureBotDir);
 
     chipServicesEl.replaceChildren();
 
-    [endpoints.dabutBaseUrl, endpoints.schedulerBaseUrl, endpoints.exposureBotDir].forEach((value) => {
+    states.forEach(({ label, ok }) => {
       const dot = document.createElement('i');
-      dot.className = value ? 'up' : 'down';
+      dot.className = ok ? 'up' : 'down';
+      dot.title = label;
       chipServicesEl.append(dot);
     });
 
     const label = document.createElement('span');
-    label.textContent = CHAT.servicesUp(configured, 3);
+    label.textContent = CHAT.servicesUp(states.filter(({ ok }) => ok).length, states.length);
     chipServicesEl.append(label);
+    chipServicesEl.title = CHAT.servicesChipTitle;
   } catch {
     chipServicesEl.textContent = '';
   }
@@ -959,7 +982,8 @@ const applyStaticLabels = () => {
   set('save-endpoints', PANEL.endpointsSaveLabel);
   set('lbl-services', PANEL.serviceUrlsField);
   set('save-service-urls', PANEL.serviceUrlsSaveLabel);
-  set('service-url-status', SETTINGS.serviceUrlsHint);
+  set('service-url-hint', SETTINGS.serviceUrlsHint);
+  set('endpoint-hint', SETTINGS.endpointsHint);
   set('lbl-scheduler', SETTINGS.serviceLoginField);
   set('sch-login', SETTINGS.serviceLoginLabel);
   set('lbl-accounts', PANEL.accountsField);
@@ -1010,6 +1034,7 @@ const init = async () => {
     requestAccount(ONBOARDING.askAccountOnStart);
   } else {
     appendEntry(CHAT.roleAgent, ONBOARDING.readyShort);
+    noticeMissingServices();
   }
 
   if (hasApiKey && accounts.length > 0) renderEmptyState();
@@ -1027,19 +1052,15 @@ const init = async () => {
 };
 
 settingsToggleEl.addEventListener('click', handleSettingsToggle);
-chipModelEl.addEventListener('click', () => {
-  settingsEl.hidden = false;
-  agentModelEl.focus();
-});
+chipModelEl.addEventListener('click', handleModelChipClick);
+chipServicesEl.addEventListener('click', handleServiceChipClick);
 saveKeyEl.addEventListener('click', handleSaveKey);
 agentModelEl.addEventListener('change', handleAgentModelChange);
 writerModelEl.addEventListener('change', handleWriterModelChange);
 saveEndpointsEl.addEventListener('click', handleSaveEndpoints);
 saveServiceUrlsEl.addEventListener('click', handleSaveServiceUrls);
 schLoginEl.addEventListener('click', handleSchedulerLogin);
-schPassEl.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') void handleSchedulerLogin();
-});
+schPassEl.addEventListener('keydown', handleSchedulerPassKeydown);
 addAccountEl.addEventListener('click', handleAddAccount);
 composerEl.addEventListener('submit', handleSubmit);
 promptEl.addEventListener('keydown', handlePromptKeydown);

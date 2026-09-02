@@ -7,6 +7,9 @@ import { catalogSummary } from './services';
  * 사용자에게 보이는 UI 문구는 messages.ts 에 있다.
  */
 
+/** 설정 패널의 서비스 주소 칸 이름. 모델이 사용자에게 안내할 때 이 이름을 그대로 부른다. */
+const SERVICE_URLS_FIELD = '서비스 화면 주소';
+
 export const TOOL_DESCRIPTIONS = {
   listAccounts:
     '이 브라우저에 등록된 네이버 계정 목록을 돌려준다. 계정 이름이나 아이디가 확실하지 않으면 먼저 이걸 부른다.',
@@ -32,9 +35,9 @@ export const TOOL_DESCRIPTIONS = {
     '블로그 스케줄러 서버에 예약 발행을 건다. 원고 생성부터 발행까지 서버가 처리한다. 부르기 전에 반드시 list_scheduler_accounts 로 계정 id 를 확인한다. 되돌리기 어려우니 값이 하나라도 불확실하면 ask_user 로 먼저 확인한다.',
   listExposureJobs: '노출지기에서 돌릴 수 있는 노출체크 작업 목록을 돌려준다.',
   listServices:
-    '이 사용자가 쓰는 서비스들의 이름과 주소 목록을 돌려준다. "노출지기 열어줘" 처럼 서비스 이름이 나오면 여기서 주소를 찾는다.',
+    '사용자가 주소를 넣어둔 서비스들의 이름과 주소 목록을 돌려준다. "노출지기 열어줘" 처럼 서비스 이름이 나오면 여기서 주소를 찾는다. 목록에 없는 이름은 아직 주소가 설정되지 않은 것이다.',
   openService:
-    '서비스를 브라우저 탭으로 연다. 서비스 이름(노출지기, 다붓, 시트앱 등)만 주면 주소를 알아서 찾는다. 사용자에게 주소를 묻지 않는다.',
+    '서비스를 브라우저 탭으로 연다. 서비스 이름(노출지기, 다붓, 시트앱 등)만 주면 주소를 알아서 찾는다. 사용자에게 주소를 묻지 않는다. 사용자가 설정에 주소를 넣지 않은 서비스는 열지 않고 그 사실을 돌려준다.',
   runExposureCheck:
     '노출지기로 네이버 노출체크를 실행한다. 수 분에서 수십 분 걸린다. 어떤 시트를 돌릴지 확실하지 않으면 list_exposure_jobs 로 확인하고 ask_user 로 물어본다.',
   listMyPosts:
@@ -101,6 +104,9 @@ export const TOOL_RESULTS = {
   unknownExposureJob: '모르는 작업이다. list_exposure_jobs 로 확인할 것.',
   serviceNotFound: (name: string) =>
     `${name} 은 아는 서비스가 아니다. list_services 로 목록을 확인할 것.`,
+  serviceNotConfigured: (name: string) =>
+    `${name} 주소가 아직 설정되어 있지 않아 아무것도 열지 않았다. 주소를 지어내지 말고, 사용자에게 설정 패널의 '${SERVICE_URLS_FIELD}' 에 ${name} 주소를 넣어달라고 알릴 것.`,
+  noServicesConfigured: `설정된 서비스 주소가 하나도 없다. 열 수 있는 화면이 없다. 주소를 지어내지 말고, 사용자에게 설정 패널의 '${SERVICE_URLS_FIELD}' 에 주소를 넣어달라고 알릴 것.`,
   serviceOpened: (name: string, url: string) => `${name} 을 탭으로 열었다: ${url}`,
   exposureDirUnset: '노출지기 저장소 경로가 설정되어 있지 않다. 사용자에게 설정에서 경로를 넣어달라고 안내할 것.',
   exposureNoJobs: (dir: string) =>
@@ -162,6 +168,30 @@ export const buildManuscriptPrompt = ({
     .filter(Boolean)
     .join('\n');
 
+/**
+ * 주소가 설정된 서비스만 모델에게 보여준다.
+ * 코드 기본값은 example.com 이고 그 도메인은 실제로 응답한다.
+ * 미설정 항목을 그대로 실으면 모델이 그 주소를 진짜로 믿고 열어 "열었어요" 라고 보고한다.
+ */
+const serviceSection = () => {
+  const summary = catalogSummary();
+
+  if (!summary) {
+    return `## 사용자가 쓰는 서비스
+
+아직 주소가 설정된 서비스가 없다. open_service 로 열 수 있는 화면이 하나도 없다.
+서비스 이름이 나오면 주소를 추측하거나 지어내지 말고, 설정 패널의 '${SERVICE_URLS_FIELD}' 에
+주소를 넣어야 열어드릴 수 있다고 한 줄로 알린다.`;
+  }
+
+  return `## 사용자가 쓰는 서비스 (아래 주소는 사용자가 직접 넣은 값이다. 다시 묻지 마라)
+
+${summary}
+
+여기 있는 서비스 이름이 나오면 open_service 로 바로 연다. "주소를 알려주시면" 같은 말을 하지 않는다.
+여기 없는 이름은 주소를 모르는 것이다. 지어내지 말고 설정에서 넣어달라고 알린다.`;
+};
+
 /** 서비스 주소를 설정에서 덮어쓴 뒤에 읽어야 하므로 상수가 아니라 함수다. */
 export const buildAgentSystemPrompt = () => `너는 GNG Browser 안에서 도는 네이버 작업 에이전트다.
 사용자가 한국어로 시키는 일을 도구를 써서 실제로 실행한다.
@@ -169,11 +199,7 @@ export const buildAgentSystemPrompt = () => `너는 GNG Browser 안에서 도는
 너는 이 사용자의 네이버 관련 서비스들을 지휘한다.
 원고 생성은 다붓 백엔드, 예약 발행은 블로그 스케줄러, 노출체크는 노출지기를 도구로 부른다.
 
-## 사용자가 쓰는 서비스 (전부 배포되어 있다. 주소를 사용자에게 묻지 마라)
-
-${catalogSummary()}
-
-서비스 이름이 나오면 open_service 로 바로 연다. "주소를 알려주시면" 같은 말을 하지 않는다.
+${serviceSection()}
 
 말투
 - 사용자에게 하는 말은 반드시 해요체로 쓴다. "~했어요", "~할게요", "~해 주세요".
