@@ -1,6 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ply</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjggMTI4Ij48cmVjdCB3aWR0aD0iMTI4IiBoZWlnaHQ9IjEyOCIgcng9IjI5IiBmaWxsPSIjMjIyMTFlIi8+PGNpcmNsZSBjeD0iNTAiIGN5PSI2NCIgcj0iMjQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2VjZTllMiIgc3Ryb2tlLXdpZHRoPSI4Ii8+PGNpcmNsZSBjeD0iNzgiIGN5PSI2NCIgcj0iMzAiIGZpbGw9IiMyMjIxMWUiLz48Y2lyY2xlIGN4PSI3OCIgY3k9IjY0IiByPSIyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZWNlOWUyIiBzdHJva2Utd2lkdGg9IjgiLz48L3N2Zz4=">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;450;500;550;600&family=Geist+Mono:wght@400;500&family=Gothic+A1:wght@300;400;500;600&display=swap">
@@ -135,11 +136,8 @@
   }
 
   .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 17.5px; letter-spacing: -0.03em; }
-  .brand .mk {
-    width: 25px; height: 25px; border-radius: 8px;
-    background: linear-gradient(155deg, #2f8f63, #12513a);
-    display: grid; place-items: center;
-  }
+  /* 앱 아이콘 그대로 쓴다. 바탕과 링 색은 build-resources/icon.svg 와 같은 값이다. */
+  .brand .mk { width: 25px; height: 25px; display: block; }
 
   .nav-links { display: flex; gap: 32px; font-size: 14px; line-height: 20px; font-weight: 500; color: var(--ink); }
   .nav-links a:hover { color: var(--blue); }
@@ -550,17 +548,37 @@
   .foot-grid a, .foot-grid span { display: block; font-size: 14px; line-height: 20px; color: var(--ink-2); padding: 4px 0; }
   .foot-grid a:hover { color: var(--ink); }
   .foot-end { margin-top: 34px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between; }
+
+  /* ---- 등장. 스크롤로 내려오는 동안 한 번만 나타난다 ---- */
+  /* 투명도는 건드리지 않는다. 켜는 코드가 한 번이라도 안 돌면 글이 통째로 사라진다.
+     살짝 올라오는 것만으로 충분하고, 실패해도 읽는 데 지장이 없다. */
+  .rise { transform: translateY(14px); transition: transform .5s ease; }
+  .rise.seen { transform: none; }
+
+  /* 히어로 목업의 대화가 차례로 켜진다. 실제 실행처럼 보이라고 넣었다. */
+  .wchat .step { opacity: .25; transition: opacity .4s ease; }
+  .wchat .step.on { opacity: 1; }
+
+  .dl-card { transition: transform .18s ease, border-color .18s ease; }
+  .dl-card:hover { transform: translateY(-2px); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rise, .wchat .step, .dl-card { transition: none; }
+    .rise { transform: none; }
+    .wchat .step { opacity: 1; }
+  }
 </style>
 
 <header>
   <div class="col pad">
     <div class="nav">
       <a class="brand" href="#top">
-        <span class="mk">
-          <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 7h6v2.4h8V19H5z" fill="none" stroke="#fff" stroke-width="2.1" stroke-linejoin="round"/>
-          </svg>
-        </span>
+        <svg class="mk" viewBox="0 0 128 128" aria-hidden="true">
+          <rect width="128" height="128" rx="29" fill="#22211e"/>
+          <circle cx="50" cy="64" r="24" fill="none" stroke="#ece9e2" stroke-width="8"/>
+          <circle cx="78" cy="64" r="30" fill="#22211e"/>
+          <circle cx="78" cy="64" r="24" fill="none" stroke="#ece9e2" stroke-width="8"/>
+        </svg>
         Ply
       </a>
       <nav class="nav-links">
@@ -587,7 +605,7 @@
 
       <div class="hero pad">
         <span class="badge"><span class="tk">✓</span><span data-k="t63">Built for running many accounts</span></span>
-        <h1 data-k="h90">One tab per account,<br>one agent that finishes the job.</h1>
+        <h1 data-k="h90">Five accounts. One window.<br><span>Tell it to sign in and publish.</span></h1>
         <p class="sub" data-k="t07">Sessions stay separated per account. The built-in agent signs in, drafts the posts, and schedules them — inside the tab you already trust.</p>
         <div class="cta">
           <a class="pill big" href="#download">
@@ -650,14 +668,14 @@
     <section class="statement dashed" id="what">
       <div><a class="link-blue" href="#use" data-k="t18">Introducing Ply</a></div>
       <div>
-        <p data-k="t88"><b>Automation today is scattered across windows.</b> One browser per account, a guess every time about which window is who, and the scripts running somewhere else entirely.</p>
+        <p data-k="t88"><b>Today you run one browser per account.</b> You check which window is who, sign in by hand, and the scripts live somewhere else. Then one day a post goes out from the wrong account.</p>
         <p data-k="t89"><b>Ply puts all of it back in one place.</b> Every tab is an account, and the agent works inside that tab. It drives the screens you are already signed in to, and hands the heavier jobs to the services you already run.</p>
       </div>
     </section>
 
     <!-- 3. tiles -->
     <section class="sec sec-mid dashed" id="use" style="padding-bottom:clamp(38px,4.4vw,60px)">
-      <h2 data-k="h91">Anything you do in a Naver tab,<br>the agent can do for you.</h2>
+      <h2 data-k="h91">Sign in, write, publish, delete, schedule.<br>The parts you keep redoing.</h2>
       <div class="tiles">
         <span class="tile"><i style="background:#03c75a"></i><span data-k="t79">Naver Blog</span></span>
         <span class="tile"><i style="background:#2db400"></i><span data-k="t80">Naver Cafe</span></span>
@@ -730,7 +748,7 @@
 
     <!-- 6. safety cards -->
     <section class="sec dashed" id="safe">
-      <h2 data-k="h92">Anything it can’t undo,<br>it asks about first.</h2>
+      <h2 data-k="h92">It asks before it deletes.<br>Naver has no undo.</h2>
       <div class="pics">
         <div class="pic">
           <div class="art art-d">
@@ -770,7 +788,7 @@
     <!-- 7. split -->
     <section class="split dashed">
       <div class="split-copy">
-        <h2 data-k="h94">One tab per account.<br><span>Run five and never lose track.</span></h2>
+        <h2 data-k="h94">One tab per account.<br>Say the rest out loud.</h2>
         <p style="color:var(--ink-2)" data-k="t43">Pick a profile in the sidebar and the new tab opens in that session. Tabs the agent opened are grouped on their own.</p>
         <a class="pill soft" href="#install" data-k="t44">See how to install</a>
       </div>
@@ -891,7 +909,7 @@
     <!-- 10. closing -->
     <div class="closing dashed">
       <div class="closing-inner">
-        <h2 data-k="h93">Built for you and the agent.<br>Start using it today.</h2>
+        <h2 data-k="h93">Install it, add one account.<br>That is the whole setup.</h2>
         <div class="cta">
           <a class="pill big" href="#download">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -980,11 +998,11 @@
      [영문, 한국어] 순서. 마크업의 data-k 값과 짝이 맞는다.
      ------------------------------------------------------------------ */
   const COPY = {
-    h94: ['One tab per account.<br><span>Run five and never lose track.</span>', '탭 하나가 계정 하나.<br><span>다섯 개를 띄워도 안 헷갈립니다.</span>'],
-    h90: ['One tab per account,<br>one agent that finishes the job.', '탭 하나가 계정 하나,<br>일은 에이전트가 끝냅니다'],
-    h91: ['Anything you do in a Naver tab,<br>the agent can do for you.', '네이버 탭에서 하던 일이라면<br>전부 대신 합니다'],
-    h92: ['Anything it can’t undo,<br>it asks about first.', '되돌릴 수 없는 일은<br>먼저 물어봅니다'],
-    h93: ['Built for you and the agent.<br>Start using it today.', '사람도 에이전트도 쓰는 브라우저<br>지금 받아보세요'],
+    h94: ['One tab per account.<br>Say the rest out loud.', '탭 하나가 계정 하나.<br>나머지는 말로 시킵니다.'],
+    h90: ['Five accounts. One window.<br><span>Tell it to sign in and publish.</span>', '계정은 다섯 개, 창은 하나.<br><span>로그인부터 발행까지 시키면 됩니다.</span>'],
+    h91: ['Sign in, write, publish, delete, schedule.<br>The parts you keep redoing.', '로그인, 글쓰기, 발행, 삭제, 예약.<br>매번 반복하던 그 일들입니다.'],
+    h92: ['It asks before it deletes.<br>Naver has no undo.', '지우기 전에 먼저 묻습니다.<br>네이버엔 되돌리기가 없으니까요.'],
+    h93: ['Install it, add one account.<br>That is the whole setup.', '설치하고 계정 하나만 등록하면<br>준비 끝입니다'],
     // 언어 토글은 '바꿀 언어'를 보여준다. 영문일 때 '한국어', 한국어일 때 'English'.
     langToggle: ['한국어', 'English'],
     t01: ['Features', '기능'],
@@ -1064,7 +1082,7 @@
     t85: ['Keyword research', '키워드 조사'],
     t86: ['Account switching', '계정 관리'],
     t87: ['Output cost per million tokens. Shorter is cheaper.', '출력 100만 토큰당 가격. 짧을수록 쌉니다.'],
-    t88: ['<b>Automation today is scattered across windows.</b> One browser per account, a guess every time about which window is who, and the scripts running somewhere else entirely.', '<b>지금은 창이 흩어져 있습니다.</b> 계정마다 브라우저를 따로 띄우고, 어느 창이 누구인지 매번 확인하고, 스크립트는 또 다른 곳에서 돕니다.'],
+    t88: ['<b>Today you run one browser per account.</b> You check which window is who, sign in by hand, and the scripts live somewhere else. Then one day a post goes out from the wrong account.', '<b>지금은 계정마다 창을 띄웁니다.</b> 어느 창이 누구인지 매번 확인하고, 로그인은 손으로 하고, 스크립트는 또 다른 데서 돕니다. 그러다 엉뚱한 계정으로 글이 나갑니다.'],
     t89: ['<b>Ply puts all of it back in one place.</b> Every tab is an account, and the agent works inside that tab. It drives the screens you are already signed in to, and hands the heavier jobs to the services you already run.', '<b>Ply는 그걸 한자리에 모았습니다.</b> 탭 하나가 계정 하나고, 에이전트는 그 탭 안에서 일합니다. 이미 로그인해 둔 화면을 그대로 조작하고, 무거운 작업은 원래 쓰던 서비스에 넘깁니다.'],
     t90: ['<b>Signing in</b> It asks for the credentials right in the chat and signs in itself — no settings screen. If a captcha appears it stops and tells you.', '<b>로그인</b> 설정 화면에 갈 것 없이 대화창에서 바로 계정을 물어보고 직접 로그인합니다. 캡차가 뜨면 멈추고 알려줘요.'],
     t91: ['<b>Drafting</b> It uses the writing projects you set up in Dabut — your model, your instructions, your pipeline. If more than one fits, it asks which to use.', '<b>원고</b> 다붓에 만들어 둔 프로젝트를 그대로 씁니다. 모델도 지침도 전후 단계도 설정한 대로예요. 맞는 게 여럿이면 어느 방식으로 뽑을지 물어봅니다.'],
@@ -1320,4 +1338,73 @@
   const currentOS = detectOS();
   if (currentOS) promoteCard(currentOS);
   if (currentOS === 'mac') refineMacArch().then(handleMacArch);
+
+  /* ------------------------------------------------------------------
+     등장과 목업 재생.
+     동작을 줄여달라는 설정이면 아무것도 움직이지 않고 전부 보이는 상태로 둔다.
+     ------------------------------------------------------------------ */
+  const quiet = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /*
+    등장 효과. IntersectionObserver 를 쓰다가 탭이 백그라운드일 때 콜백이 안 돌아
+    섹션이 opacity 0 인 채로 남는 걸 봤다. 안 보이는 것보다 안 움직이는 게 낫다.
+    그래서 스크롤로 직접 재고, 무슨 일이 있어도 2초 뒤엔 전부 보이게 한다.
+  */
+  const setupReveal = () => {
+    const targets = [...document.querySelectorAll('section > h2, .closing-inner, .dl-card')];
+    const revealAll = () => targets.forEach((el) => el.classList.add('seen'));
+
+    if (quiet) {
+      targets.forEach((el) => el.classList.add('seen'));
+      return;
+    }
+
+    targets.forEach((el) => el.classList.add('rise'));
+
+    const check = () => {
+      const limit = window.innerHeight * 0.9;
+      targets.forEach((el) => {
+        if (el.classList.contains('seen')) return;
+        if (el.getBoundingClientRect().top < limit) el.classList.add('seen');
+      });
+    };
+
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        check();
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    check();
+
+    // 최후의 안전장치. 위 어느 것도 안 돌아도 페이지가 비어 보이지는 않는다.
+    setTimeout(revealAll, 2000);
+  };
+
+  /* 히어로의 대화 세 덩어리를 차례로 켠다. 한 번만 돈다 — 반복하면 눈이 아프다. */
+  const setupStage = () => {
+    const steps = [...document.querySelectorAll('.win .wchat > *')];
+    if (steps.length === 0) return;
+
+    steps.forEach((step) => step.classList.add('step'));
+
+    if (quiet || !('IntersectionObserver' in window)) {
+      steps.forEach((step) => step.classList.add('on'));
+      return;
+    }
+
+    const run = () => steps.forEach((step, index) => setTimeout(() => step.classList.add('on'), 200 * index));
+
+    // 히어로는 첫 화면에 있다. 관찰자를 기다릴 이유가 없고, 안 돌면 흐린 채로 남는다.
+    setTimeout(run, 500);
+  };
+
+  setupReveal();
+  setupStage();
 </script>
