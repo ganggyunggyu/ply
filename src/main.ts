@@ -535,6 +535,14 @@ const handleReady = () => {
     sourceDir: legacyConfigDir(),
     targetDir: configDir(),
     fallbackSources: { 'profiles.json': legacyProfileFile() },
+    canDecrypt: (cipher) => {
+      try {
+        electronCrypto.decrypt(cipher);
+        return true;
+      } catch {
+        return false;
+      }
+    },
   });
   loadServiceUrls();
   registerIpcHandlers();

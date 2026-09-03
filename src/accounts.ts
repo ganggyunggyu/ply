@@ -140,7 +140,13 @@ export const createAccountStore = ({ filePath, crypto }: AccountStoreOptions) =>
     const account = read().find((entry) => entry.id === id);
     if (!account?.passwordCipher) return null;
 
-    return crypto.decrypt(account.passwordCipher);
+    // 앱 이름이 바뀌면 키체인 항목이 달라져 옛 암호문이 안 풀린다.
+    // 그때 던지면 로그인 도구가 죽는다. 없다고 답하면 사용자에게 다시 받는 길로 간다.
+    try {
+      return crypto.decrypt(account.passwordCipher);
+    } catch {
+      return null;
+    }
   };
 
   return { list, add, updatePassword, remove, find, readPassword };

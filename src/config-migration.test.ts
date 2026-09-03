@@ -98,3 +98,35 @@ test('이관한 프로필 목록을 새 설정 저장소가 그대로 읽는다'
   const store = createProfileStore({ filePath: join(targetDir, 'profiles.json') });
   assert.deepEqual(store.list(), profiles);
 });
+
+test('못 푸는 암호문은 옮기지 않는다', () => {
+  const { sourceDir, targetDir } = makeDirs();
+  writeFileSync(
+    join(sourceDir, 'settings.json'),
+    JSON.stringify({ apiKeyCipher: 'dead', schedulerLabel: '21lab' }),
+  );
+  writeFileSync(
+    join(sourceDir, 'accounts.json'),
+    JSON.stringify([{ id: 'a', naverId: 'a', passwordCipher: 'dead' }]),
+  );
+
+  migrateLegacyConfig({ sourceDir, targetDir, canDecrypt: () => false });
+
+  const settings = JSON.parse(readFileSync(join(targetDir, 'settings.json'), 'utf-8'));
+  const accounts = JSON.parse(readFileSync(join(targetDir, 'accounts.json'), 'utf-8'));
+
+  assert.equal(settings.apiKeyCipher, undefined, '못 푸는 키가 그대로 넘어왔다');
+  assert.equal(settings.schedulerLabel, '21lab', '암호문이 아닌 값까지 지웠다');
+  assert.equal(accounts[0].passwordCipher, undefined, '못 푸는 비번이 그대로 넘어왔다');
+  assert.equal(accounts[0].naverId, 'a', '계정 정보까지 지웠다');
+});
+
+test('풀 수 있는 암호문은 그대로 옮긴다', () => {
+  const { sourceDir, targetDir } = makeDirs();
+  writeFileSync(join(sourceDir, 'settings.json'), JSON.stringify({ apiKeyCipher: 'live' }));
+
+  migrateLegacyConfig({ sourceDir, targetDir, canDecrypt: () => true });
+
+  const settings = JSON.parse(readFileSync(join(targetDir, 'settings.json'), 'utf-8'));
+  assert.equal(settings.apiKeyCipher, 'live');
+});

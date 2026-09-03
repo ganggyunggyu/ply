@@ -98,6 +98,23 @@ export const toPublicSettings = ({
   services: resolveServices(serviceUrls ?? {}),
 });
 
+/**
+ * 못 푸는 암호문은 없는 것으로 친다.
+ *
+ * 앱 이름이 바뀌면 safeStorage 가 쓰는 키체인 항목도 바뀐다. 설정 파일은 그대로 옮겨 와도
+ * 그 안의 암호문은 옛 항목으로 잠겨 있어 안 풀린다. 그때 던지면 "키가 저장돼 있다" 고
+ * 표시해 놓고 쓰려는 순간 터진다. 없다고 답해야 온보딩이 다시 물어본다.
+ */
+const decryptOrNull = (crypto: SecretCrypto, cipher: string | undefined) => {
+  if (!cipher) return null;
+
+  try {
+    return crypto.decrypt(cipher);
+  } catch {
+    return null;
+  }
+};
+
 export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) => {
   const read = (): StoredSettings => {
     if (!existsSync(filePath)) return {};
@@ -199,7 +216,7 @@ export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) 
 
   const readSchedulerToken = () => {
     const { schedulerTokenCipher } = read();
-    return schedulerTokenCipher ? crypto.decrypt(schedulerTokenCipher) : null;
+    return decryptOrNull(crypto, schedulerTokenCipher);
   };
 
   /**
@@ -217,12 +234,12 @@ export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) 
 
   const readExposureCookie = () => {
     const { exposureCookieCipher } = read();
-    return exposureCookieCipher ? crypto.decrypt(exposureCookieCipher) : null;
+    return decryptOrNull(crypto, exposureCookieCipher);
   };
 
   const readApiKey = () => {
     const { apiKeyCipher } = read();
-    return apiKeyCipher ? crypto.decrypt(apiKeyCipher) : null;
+    return decryptOrNull(crypto, apiKeyCipher);
   };
 
   return {
