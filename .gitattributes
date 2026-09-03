@@ -1,2 +1,7 @@
-# 문서를 코드로 굽는다. 체크아웃 줄바꿈이 플랫폼마다 다르면 생성물이 달라진다.
-*.md text eol=lf
+# 문서를 코드로 굽고(scripts/build-api-docs.mjs) 그 결과를 원본과 대조한다.
+# 체크아웃 줄바꿈이 플랫폼마다 다르면 생성물이 달라져서 윈도우 CI 에서만 깨진다.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.icns binary
