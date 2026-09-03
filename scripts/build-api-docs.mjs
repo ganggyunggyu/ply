@@ -146,7 +146,9 @@ const files = readdirSync(docsDir)
   .sort();
 
 const docs = files.map((file) => {
-  const raw = readFileSync(join(docsDir, file), 'utf-8');
+  // 윈도우 체크아웃은 md 를 CRLF 로 받는다. 그대로 넣으면 생성물이 플랫폼마다 달라져서
+  // "다시 만든 것과 같다" 검사가 CI 윈도우에서만 깨진다.
+  const raw = readFileSync(join(docsDir, file), 'utf-8').replace(/\r\n/g, '\n');
   const { meta, body } = parseFrontmatter(fillPlaceholders(raw, file), file);
 
   ['topic', 'title', 'triggers', 'routes', 'tools'].forEach((key) => {
