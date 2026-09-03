@@ -1346,13 +1346,15 @@
   const quiet = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /*
-    등장 효과. IntersectionObserver 를 쓰다가 탭이 백그라운드일 때 콜백이 안 돌아
-    섹션이 opacity 0 인 채로 남는 걸 봤다. 안 보이는 것보다 안 움직이는 게 낫다.
-    그래서 스크롤로 직접 재고, 무슨 일이 있어도 2초 뒤엔 전부 보이게 한다.
+    등장 효과. 섹션이 화면에 들어올 때마다 그 섹션만 올라온다.
+
+    관찰자와 스크롤을 같이 건다. 둘이 같은 일을 하고 먼저 닿는 쪽이 이긴다.
+    배경 탭에서는 관찰자가 스크롤 갱신을 못 받는 걸 실제로 봤다.
+    투명도는 안 건드리므로(위 .rise) 둘 다 안 돌아도 글은 그대로 읽힌다.
   */
   const setupReveal = () => {
-    const targets = [...document.querySelectorAll('section > h2, .closing-inner, .dl-card')];
-    const revealAll = () => targets.forEach((el) => el.classList.add('seen'));
+    const targets = [...document.querySelectorAll('section > h2, .sec > h2, .closing-inner, .dl-card')];
+    if (targets.length === 0) return;
 
     if (quiet) {
       targets.forEach((el) => el.classList.add('seen'));
@@ -1361,30 +1363,49 @@
 
     targets.forEach((el) => el.classList.add('rise'));
 
-    const check = () => {
-      const limit = window.innerHeight * 0.9;
-      targets.forEach((el) => {
-        if (el.classList.contains('seen')) return;
-        if (el.getBoundingClientRect().top < limit) el.classList.add('seen');
-      });
+    const pending = new Set(targets);
+    const reveal = (el) => {
+      if (!pending.has(el)) return;
+      pending.delete(el);
+      el.classList.add('seen');
     };
 
-    let ticking = false;
-    const onScroll = () => {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        ticking = false;
-        check();
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            reveal(entry.target);
+            observer.unobserve(entry.target);
+          });
+        },
+        // 아래에서 12% 올려 잡는다. 화면 맨 아래 걸치자마자 끝나면 못 본다.
+        { rootMargin: '0px 0px -12% 0px', threshold: 0.15 },
+      );
+
+      targets.forEach((el) => observer.observe(el));
+    }
+
+    const sweep = () => {
+      const limit = window.innerHeight * 0.88;
+      [...pending].forEach((el) => {
+        if (el.getBoundingClientRect().top < limit) reveal(el);
       });
+      if (pending.size === 0) window.removeEventListener('scroll', onScroll);
+    };
+
+    // rAF 로 묶지 않는다. 배경 탭에서 rAF 가 멈춰 스크롤을 해도 아무것도 안 켜졌다.
+    let last = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - last < 80) return;
+      last = now;
+      sweep();
     };
 
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onScroll, { passive: true });
-    check();
-
-    // 최후의 안전장치. 위 어느 것도 안 돌아도 페이지가 비어 보이지는 않는다.
-    setTimeout(revealAll, 2000);
+    sweep();
   };
 
   /* 히어로의 대화 세 덩어리를 차례로 켠다. 한 번만 돈다 — 반복하면 눈이 아프다. */
@@ -1401,8 +1422,22 @@
 
     const run = () => steps.forEach((step, index) => setTimeout(() => step.classList.add('on'), 200 * index));
 
-    // 히어로는 첫 화면에 있다. 관찰자를 기다릴 이유가 없고, 안 돌면 흐린 채로 남는다.
-    setTimeout(run, 500);
+    if (!('IntersectionObserver' in window)) {
+      run();
+      return;
+    }
+
+    /* 대화가 화면에 들어오면 재생한다. 한 번만 돈다 — 오르내릴 때마다 다시 켜지면 눈이 아프다.
+       여기 흐림은 opacity 라서, 관찰자가 안 도는 경우를 대비해 3초 뒤엔 그냥 켠다. */
+    const stall = setTimeout(run, 3000);
+    const play = new IntersectionObserver((entries, observer) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      clearTimeout(stall);
+      run();
+    }, { threshold: 0.25 });
+
+    play.observe(steps[0].closest('.wchat') ?? steps[0]);
   };
 
   setupReveal();
