@@ -20,8 +20,6 @@ export const ONBOARDING = {
   serviceLoginSaved: (label: string) => `${label} 으로 로그인했어요.`,
   askCookieLogin: '자주 쓰는 화면도 미리 로그인해둘까요? 누르면 탭으로 열어드려요.',
   cookieLoginDone: '로그인은 열린 탭에서 하시면 돼요. 한 번만 하면 계속 기억해요.',
-  serviceUrlsMissing:
-    '아직 서비스 화면 주소가 비어 있어요. 설정 > 서비스 화면 주소에 넣어주시면 이름만 말해도 열어드릴게요.',
   accountIdPlaceholder: '네이버 아이디',
   accountPwPlaceholder: '비밀번호 (선택)',
   accountHint: '비밀번호까지 넣으면 로그인도 대신 해드려요.',
@@ -57,12 +55,23 @@ export const CHAT = {
   composerHint: '⌘↵ 실행',
   servicesUp: (n: number, total: number) => `연동 ${n}/${total}`,
   modelChipTitle: '설정에서 모델을 바꿀 수 있어요',
-  servicesChipTitle: '설정에서 주소를 넣을 수 있어요',
+  servicesChipTitle: '설정에서 연동 상태를 볼 수 있어요',
   sendLabel: '↑',
   sendRunningLabel: '·',
+  stopLabel: '■',
+  stopTitle: '실행 멈추기',
+  /** 진행 중이던 도구 하나는 끝까지 돈다. 그 사실을 숨기지 않는다. */
+  cancelled: '여기서 멈췄어요. 하던 작업 하나는 끝까지 돌고 다음 단계로 넘어가지 않아요.',
+  /** 버튼만 잠그면 씹혔다고 보고 앱을 강제 종료한다. 그게 발행·삭제를 진짜로 중간에 끊는 길이다. */
+  cancelRequested: '정지를 눌렀어요. 하던 작업 하나가 끝나면 멈출게요.',
   toolDone: (name: string) => `${name} 완료`,
   toolFailed: (name: string) => `${name} 실패`,
   stoppedTooLong: '여기까지 하고 멈췄어요. 다시 시켜주시겠어요?',
+  noOutput: '이번에는 아무 답도 오지 않았어요. 한 번 더 시켜주시겠어요?',
+  // 칩 세 개가 좁은 패널을 나눠 쓴다. 비용까지 붙을 때는 앞말을 뺀다.
+  usageChip: (tokens: string) => `토큰 ${tokens}`,
+  usageChipWithCost: (tokens: string, cost: string) => `${tokens} · $${cost}`,
+  usageChipTitle: '이 대화에서 쓴 토큰과 대략적인 비용이에요',
   answerExpired: '답변을 기다리는 시간이 지나서 이 질문은 이미 닫혔어요. 다시 시켜주세요.',
   formSubmitLabel: '확인',
   formCancelLabel: '취소',
@@ -85,8 +94,6 @@ export const PANEL = {
   schedulerPlaceholder: '블로그 스케줄러 주소',
   exposurePlaceholder: '노출지기 저장소 경로',
   endpointsSaveLabel: '저장',
-  serviceUrlsField: '서비스 화면 주소 (에이전트가 여는 곳)',
-  serviceUrlsSaveLabel: '주소 저장',
   accountsField: '네이버 계정',
   accountLabelPlaceholder: '부를 이름 (예: 메인 계정)',
   accountAddLabel: '추가',
@@ -125,10 +132,6 @@ export const SETTINGS = {
   profilePrompt: '프로필 이름 (계정별로 세션이 분리됩니다)',
   endpointsSaved: '연동 주소 저장됨',
   endpointsHint: '원고 생성·예약 발행·노출체크가 직접 부르는 곳이에요.',
-  serviceUrlsSaved: '서비스 주소 저장됨',
-  serviceUrlsHint: '주소를 넣은 화면만 열어드려요. 비워두면 그 서비스는 없는 것으로 둡니다. 주소는 이 컴퓨터에만 저장돼요.',
-  serviceUrlsEmpty: '서비스 목록 없음',
-  serviceUrlInvalid: (name: string) => `${name} 주소는 http:// 또는 https:// 로 시작해야 해요.`,
   serviceLoginField: '다붓 계정',
   serviceUserPlaceholder: '다붓 아이디',
   servicePassPlaceholder: '비밀번호',
@@ -147,9 +150,16 @@ export const ERRORS = {
   apiKeyRateLimited: '요청이 너무 잦아요. 잠시 뒤에 다시 시켜주세요.',
   modelUnavailable: (model: string) => `${model} 모델을 지금 쓸 수 없어요. 설정에서 다른 모델을 골라보세요.`,
   openRouterDown: '오픈라우터가 응답하지 않아요. 잠시 뒤에 다시 시켜주세요.',
+  /** 400 은 서버가 살아 있는데 우리 요청이 거절된 것이다. "응답하지 않아요" 로 덮으면 원인이 사라진다. */
+  requestRejected: '요청이 거절됐어요. 대화가 너무 길거나 모델이 못 받는 형식일 수 있어요.',
   networkUnreachable: '네트워크에 연결하지 못했어요.',
   windowNotReady: '브라우저 창이 아직 준비되지 않았어요.',
-  agentBusy: '지금 다른 작업이 돌고 있어요. 끝나면 이어서 할게요.',
+  /**
+   * 대기 큐가 없다. main 이 그냥 던지고 패널은 에러 카드를 찍은 뒤 메시지를 버린다.
+   * "이어서 할게요" 는 지키지 못하는 약속이라, 사용자가 실제로 할 수 있는 것만 적는다.
+   */
+  agentBusy: '지금 다른 작업이 돌고 있어요. 끝나길 기다리거나 정지를 누른 뒤에 다시 보내 주세요.',
+  runCancelled: '사용자가 실행을 멈췄습니다',
 
   accountsFileUnreadable: '계정 파일을 읽지 못했습니다',
   settingsFileUnreadable: '설정 파일을 읽지 못했습니다',
@@ -167,6 +177,7 @@ export const ERRORS = {
   publishButtonNotFound: '발행 버튼을 찾지 못했습니다',
   publishConfirmNotFound: '발행 확인 버튼을 찾지 못했습니다',
   questionTimeout: '답을 기다리다 시간이 지나 중단했습니다',
+  dabutLoginTimeout: '다붓 로그인을 기다리다 시간이 지나 중단했습니다',
   blogIdNotResolved: '내 블로그 주소를 확인하지 못했습니다',
   postListUnreadable: '블로그 글 목록을 읽지 못했습니다',
   postListRateLimited: '네이버가 목록 요청을 막았습니다. 잠시 뒤에 다시 시도해야 합니다',

@@ -1,6 +1,7 @@
 import type { AxiosInstance } from 'axios';
 import type { AccountStore } from './accounts';
 import type { QuestionChoice, QuestionField, QuestionFieldType } from './bridge';
+import { kstMinutesNow, kstToday } from './clock';
 import { QUESTION_FIELD_TYPES, QUESTION_FORM_CANCEL } from './constants';
 import { generateText, type ToolSpec } from './openrouter';
 import { CONFIRM, ERRORS, PROGRESS } from './messages';
@@ -23,7 +24,9 @@ import {
   TOOL_DESCRIPTIONS as DESC,
   TOOL_RESULTS as RESULT,
 } from './prompts';
+import type { Page } from 'playwright-core';
 import {
+  BLOG_HOST,
   connectBrowser,
   deleteSinglePost,
   detectLoginBlock,
@@ -36,6 +39,7 @@ import {
   resolveBlogId,
   sleep,
   waitForPageByTabId,
+  WRITE_URL,
   writeBlogPost,
   type DeleteOutcome,
   type RecentPost,
@@ -80,6 +84,14 @@ export type ToolContext = {
   /** 값이 여러 개일 때. 답은 { key: value } 를 JSON 으로 직렬화한 문자열이다. */
   askUserForm: (question: string, fields: QuestionField[]) => Promise<string>;
   requestDabutLogin: (reason: string) => Promise<string>;
+  /**
+   * 이번 실행의 정지 스위치.
+   *
+   * 도구 하나를 중간에 끊지는 않는다(openrouter.ts 참고). 다만 delete_blog_posts 처럼 한 번의
+   * 호출 안에서 되돌릴 수 없는 작업을 여러 번 반복하는 도구는, 글과 글 사이가 안전하게 멈출 수
+   * 있는 경계라서 그 자리에서만 신호를 본다.
+   */
+  signal?: AbortSignal;
 };
 
 const isQuestionFieldType = (value: unknown): value is QuestionFieldType =>
@@ -228,10 +240,19 @@ const isCalendarDate = (value: string) => {
  * knownProjectIds 는 이번 실행에서 list_dabut_projects 가 돌려준 id 다. 폼이 라벨을 보여주고
  * id 를 돌려주더라도 모델이 다른 값을 실어 보낼 수 있고, 스케줄러는 min(1) 문자열이면 뭐든 받는다.
  * 틀린 프로젝트로 나간 건 몇 시간 뒤 생성 시점에나 드러나므로 여기서 대조한다.
+ *
+ * today 는 KST 기준 YYYY-MM-DD 다. 비교는 문자열 사전순으로 한다.
+ * YYYY-MM-DD 는 사전순이 곧 시간순이라 타임존 변환 없이 안전하다.
+ *
+ * nowMinutes 는 KST 자정으로부터 지난 분이다. 날짜가 오늘일 때만 쓴다.
  */
 export const buildAutoScheduleInput = (
   raw: Record<string, unknown>,
-  knownProjectIds: ReadonlySet<string>,
+  {
+    knownProjectIds,
+    today,
+    nowMinutes,
+  }: { knownProjectIds: ReadonlySet<string>; today: string; nowMinutes: number },
 ): AutoScheduleBuild => {
   const keywords = Array.isArray(raw.keywords)
     ? raw.keywords.map(String).filter((keyword) => keyword.trim() !== '')
@@ -246,6 +267,9 @@ export const buildAutoScheduleInput = (
   if (!scheduleDate) return { ok: false, result: RESULT.scheduleDateRequired };
   if (!isCalendarDate(scheduleDate)) {
     return { ok: false, result: RESULT.scheduleDateFormat(scheduleDate) };
+  }
+  if (scheduleDate < today) {
+    return { ok: false, result: RESULT.scheduleDatePast(scheduleDate, today) };
   }
 
   const projectId = raw.projectId === undefined || raw.projectId === null ? '' : String(raw.projectId).trim();
@@ -278,8 +302,17 @@ export const buildAutoScheduleInput = (
   if (outOfRange(postsPerDay, postsPerDayMin, postsPerDayMax)) {
     return { ok: false, result: RESULT.scheduleOutOfRange('postsPerDay', postsPerDayMin, postsPerDayMax) };
   }
+  // 빠지면 hub 가 body 에서 통째로 빼고 서버 기본값이 쓰인다. 사용자가 정하지 않은 시각에 글이 올라간다.
+  if (startHour === undefined) return { ok: false, result: RESULT.scheduleStartHourRequired };
   if (outOfRange(startHour, startHourMin, startHourMax)) {
     return { ok: false, result: RESULT.scheduleOutOfRange('startHour', startHourMin, startHourMax) };
+  }
+  // 날짜만 거르면 22시에 "오늘 06시" 를 거는 것을 못 막는다. 그것도 지난 예약이라 워커가 바로 집어간다.
+  if (scheduleDate === today && startHour * 60 < nowMinutes) {
+    return {
+      ok: false,
+      result: RESULT.scheduleStartHourPast(startHour, today, Math.floor(nowMinutes / 60)),
+    };
   }
   if (outOfRange(intervalMinutes, intervalMinutesMin, intervalMinutesMax)) {
     return {
@@ -760,6 +793,22 @@ export const requestScheduleCancelApproval = async ({
   }
 };
 
+export type DeleteRow = { logNo: string; title: string; status: string; note: string };
+
+/**
+ * 정지가 걸린 뒤 남은 삭제 대상을 결과 표의 행으로 만든다.
+ *
+ * 승인받은 10건 중 3건째에서 멈췄으면 나머지 7건은 손도 대지 않은 것이다. 표에서 아예 빼면
+ * 모델이 "전부 지웠다" 로 읽고 사용자에게 그렇게 보고한다. 지우지 않았다는 사실을 행으로 남긴다.
+ */
+export const stoppedDeleteRows = (targets: readonly { logNo: string; title: string }[]): DeleteRow[] =>
+  targets.map(({ logNo, title }) => ({
+    logNo,
+    title,
+    status: RESULT.deleteStatusStopped,
+    note: '',
+  }));
+
 const KNOWN_ERROR_MESSAGES = new Set<string>(
   (Object.values(ERRORS) as unknown[]).filter((value): value is string => typeof value === 'string'),
 );
@@ -785,6 +834,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     askUser,
     askUserForm,
     requestDabutLogin,
+    signal,
   } = context;
 
   // createNaverTools 는 실행마다 새로 불린다. 따라서 아래 값들은 자연히 실행 단위다.
@@ -825,6 +875,46 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       return { ok: true, owned };
     } catch (error) {
       return { ok: false, result: RESULT.scheduleAccountsUnknown(describeSchedulerError(error)) };
+    }
+  };
+
+  /**
+   * 작업용 탭 하나를 열고, 끝나면 반드시 닫는다.
+   *
+   * 로그인·발행·목록·삭제가 전부 같은 모양이라 여기로 묶었다. 안 닫으면 탭이 실행마다 쌓이고,
+   * findPageByTabId 가 열린 페이지를 전부 훑기 때문에 탭 특정이 점점 느려진다.
+   *
+   * 놓는 순서가 중요하다. 페이지(CDP)를 먼저 놓고 탭을 닫는다. 반대로 하면 playwright 가
+   * 이미 사라진 타깃을 잡고 있다가 던진다.
+   *
+   * keepTab 은 사람이 그 탭에서 뭔가를 끝내야 하는 경우에만 부른다(캡차·2차 인증).
+   * 그때는 화면도 그 탭으로 옮긴다. 남기기만 하고 안 보여주면 사이드바를 뒤져 찾아야 하는데,
+   * 캡차와 2차 인증은 시간 제한이 있어서 그 사이에 만료된다.
+   * 에이전트 탭이 화면을 뺏지 않는다는 규칙(tab-focus.ts)의 유일한 예외다.
+   */
+  const withAgentTab = async <T>(
+    { url, profileId }: { url: string; profileId: string },
+    run: (input: { page: Page; tabId: number; keepTab: () => void }) => Promise<T>,
+  ): Promise<T> => {
+    const tabId = tabManager.createTab({ url, profileId, openedByAgent: true });
+    let keep = false;
+    const keepTab = () => {
+      keep = true;
+    };
+
+    try {
+      const browser = await connectBrowser(cdpPort);
+
+      try {
+        const page = await waitForPageByTabId(browser, tabId);
+
+        return await run({ page, tabId, keepTab });
+      } finally {
+        await browser.close();
+      }
+    } finally {
+      if (keep) tabManager.selectTab(tabId);
+      else tabManager.closeTab(tabId);
     }
   };
 
@@ -874,35 +964,44 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       if (!account) return RESULT.accountNotFound(id);
 
       onProgress(PROGRESS.loginTabOpening(account.label));
-      const loginTabId = tabManager.createTab({ url: LOGIN_URL, profileId: id, openedByAgent: true });
 
-      const browser = await connectBrowser(cdpPort);
-
-      try {
-        const page = await waitForPageByTabId(browser, loginTabId);
-
+      return withAgentTab({ url: LOGIN_URL, profileId: id }, async ({ page, keepTab }) => {
+        // 비밀번호가 없으면 사용자가 이 탭에서 직접 로그인해야 한다. 닫으면 할 자리가 사라진다.
         if (!account.hasPassword) {
+          keepTab();
           return RESULT.noStoredPassword;
         }
 
         const password = accountStore.readPassword(id);
-        if (!password) return RESULT.decryptFailed;
+        if (!password) {
+          keepTab();
+          return RESULT.decryptFailed;
+        }
 
         onProgress(PROGRESS.loginFilling);
         await fillLoginForm(page, account.naverId, password);
         await sleep(4000);
 
+        // 캡차와 2차 인증은 사람이 그 화면에서 풀어야 한다. 탭을 닫으면 처음부터 다시 해야 한다.
         const block = await detectLoginBlock(page);
-        if (block === 'captcha') return RESULT.blockedByCaptcha;
-        if (block === 'two_factor') return RESULT.blockedByTwoFactor;
+        if (block === 'captcha') {
+          keepTab();
+          return RESULT.blockedByCaptcha;
+        }
+        if (block === 'two_factor') {
+          keepTab();
+          return RESULT.blockedByTwoFactor;
+        }
+        // 비밀번호가 틀린 것은 사람이 그 탭에서 풀 수 있는 문제가 아니다. 닫는다.
         if (block === 'error') return RESULT.wrongCredentials;
 
-        if (isSessionExpired(page.url())) return RESULT.stillOnLoginPage;
+        if (isSessionExpired(page.url())) {
+          keepTab();
+          return RESULT.stillOnLoginPage;
+        }
 
         return RESULT.loginSucceeded;
-      } finally {
-        await browser.close();
-      }
+      });
     },
   };
 
@@ -928,7 +1027,13 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
         angle: angle ? String(angle) : undefined,
       });
 
-      const raw = await generateText({ client, model: writerModel, system: MANUSCRIPT_SYSTEM, prompt });
+      const raw = await generateText({
+        client,
+        model: writerModel,
+        system: MANUSCRIPT_SYSTEM,
+        prompt,
+        signal,
+      });
       const { title, body } = splitManuscript(raw);
 
       return JSON.stringify({ title, body });
@@ -958,21 +1063,14 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       if (!hasNaverSession(names)) return RESULT.notLoggedIn;
 
       onProgress(PROGRESS.publishStarting(account.label, String(title)));
-      const tabId = tabManager.createTab({
-        url: 'https://blog.naver.com/GoBlogWrite.naver',
-        profileId: id,
-        openedByAgent: true,
-      });
-      const browser = await connectBrowser(cdpPort);
 
-      try {
-        const page = await waitForPageByTabId(browser, tabId);
+      // 남는 건 에디터 탭이지 발행된 글이 아니다. 사용자가 볼 주소는 결과 문장에 링크로 나가므로
+      // 여기서는 닫는다.
+      return withAgentTab({ url: WRITE_URL, profileId: id }, async ({ page }) => {
         const url = await writeBlogPost(page, { title: String(title), body: String(body), onProgress });
 
         return RESULT.published(url);
-      } finally {
-        await browser.close();
-      }
+      });
     },
   };
 
@@ -999,11 +1097,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       const count = clampListLimit(limit);
       onProgress(PROGRESS.postListLoading(account.label));
 
-      const tabId = tabManager.createTab({ url: MY_BLOG_URL, profileId: id, openedByAgent: true });
-      const browser = await connectBrowser(cdpPort);
-
-      try {
-        const page = await waitForPageByTabId(browser, tabId);
+      return withAgentTab({ url: MY_BLOG_URL, profileId: id }, async ({ page }) => {
         const blogId = await resolveBlogId(page);
         const posts = await fetchRecentPosts(page, { blogId, limit: count });
 
@@ -1015,9 +1109,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
         return JSON.stringify(
           posts.map(({ logNo, title, addDate, postUrl }) => ({ blogId, logNo, title, addDate, postUrl })),
         );
-      } finally {
-        await browser.close();
-      }
+      });
     },
   };
 
@@ -1063,48 +1155,59 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
         return RESULT.deleteCancelled(answer);
       }
 
-      const tabId = tabManager.createTab({
-        url: `https://blog.naver.com/${blogId}`,
-        profileId: id,
-        openedByAgent: true,
-      });
-      const browser = await connectBrowser(cdpPort);
-      const rows: { logNo: string; title: string; status: string; note: string }[] = [];
+      // 확인 카드에 답한 직후 정지를 눌렀을 수 있다. 브라우저를 열기 전에 확인한다.
+      if (signal?.aborted) return RESULT.deleteStoppedBeforeStart;
 
-      try {
-        const page = await waitForPageByTabId(browser, tabId);
+      const rows: DeleteRow[] = [];
 
-        // 목록을 읽은 뒤 사용자가 이 프로필에서 다른 계정으로 갈아탔을 수 있다.
-        const activeBlogId = await resolveBlogId(page);
-        if (activeBlogId !== blogId) return RESULT.deleteBlogChanged(blogId, activeBlogId);
+      const early = await withAgentTab(
+        { url: `https://${BLOG_HOST}/${blogId}`, profileId: id },
+        async ({ page }) => {
+          // 목록을 읽은 뒤 사용자가 이 프로필에서 다른 계정으로 갈아탔을 수 있다.
+          const activeBlogId = await resolveBlogId(page);
+          if (activeBlogId !== blogId) return RESULT.deleteBlogChanged(blogId, activeBlogId);
 
-        for (const { logNo, title } of targets) {
-          attemptedLogNos.add(logNo);
-          onProgress(PROGRESS.deleting(title));
+          for (const [index, { logNo, title }] of targets.entries()) {
+            /*
+             * 여기가 이 도구 안에서 안전하게 멈출 수 있는 유일한 자리다.
+             *
+             * deleteSinglePost 한 건은 이동 → 확인 → 클릭 → 검증까지 닫힌 사이클이라 글과 글
+             * 사이는 원자적 경계다. 반쯤 지워진 상태가 생기지 않으므로, 진행 중인 한 건만 끝내고
+             * 나머지는 손대지 않는다. 승인한 10건 중 1건을 보고 "저건 아닌데" 하고 정지를 눌렀을 때
+             * 나머지 9건이 그대로 지워지면 정지 버튼이 있으나 마나다.
+             */
+            if (signal?.aborted) {
+              rows.push(...stoppedDeleteRows(targets.slice(index)));
+              break;
+            }
 
-          let outcome: DeleteOutcome;
+            attemptedLogNos.add(logNo);
+            onProgress(PROGRESS.deleting(title));
 
-          try {
-            outcome = await deleteSinglePost(page, { blogId, logNo, expectedTitle: title, onProgress });
-          } catch (error) {
-            console.error(error);
-            outcome = { logNo, status: 'unknown', message: describeToolError(error) };
+            let outcome: DeleteOutcome;
+
+            try {
+              outcome = await deleteSinglePost(page, { blogId, logNo, expectedTitle: title, onProgress });
+            } catch (error) {
+              console.error(error);
+              outcome = { logNo, status: 'unknown', message: describeToolError(error) };
+            }
+
+            if (outcome.status === 'deleted') knownPosts.delete(logNo);
+
+            rows.push({
+              logNo,
+              title,
+              status: RESULT.deleteStatus[outcome.status],
+              note: outcome.message ?? outcome.actualTitle ?? '',
+            });
           }
 
-          if (outcome.status === 'deleted') knownPosts.delete(logNo);
+          return null;
+        },
+      );
 
-          rows.push({
-            logNo,
-            title,
-            status: RESULT.deleteStatus[outcome.status],
-            note: outcome.message ?? outcome.actualTitle ?? '',
-          });
-        }
-      } finally {
-        await browser.close();
-      }
-
-      return JSON.stringify(rows);
+      return early ?? JSON.stringify(rows);
     },
   };
 
@@ -1139,10 +1242,12 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       if (!found) return RESULT.serviceNotFound(String(service));
       if (!isServiceConfigured(found.key)) return RESULT.serviceNotConfigured(found.name);
 
+      // 사용자가 "열어줘" 라고 시킨 탭이다. 안 보여주면 화면은 그대로인데 "열었어요" 라고 보고하게 된다.
       tabManager.createTab({
         url: found.url,
         profileId: accountId ? String(accountId) : 'default',
         openedByAgent: true,
+        focus: true,
       });
 
       return RESULT.serviceOpened(found.name, found.url);
@@ -1166,6 +1271,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
         url: String(url),
         profileId: accountId ? String(accountId) : 'default',
         openedByAgent: true,
+        focus: true,
       });
       return RESULT.tabOpened(String(url));
     },
@@ -1281,7 +1387,15 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       properties: { reason: { type: 'string', description: PARAM.loginReason } },
       additionalProperties: false,
     },
-    run: async ({ reason }) => requestDabutLogin(String(reason ?? '')),
+    // 대기가 만료되면 requestDabutLogin 이 던진다. 그대로 두면 도구가 아니라 실행 전체가 죽는다.
+    run: async ({ reason }) => {
+      try {
+        return await requestDabutLogin(String(reason ?? ''));
+      } catch {
+        // 정지도 대기를 풀어 준다. 그걸 만료라고 적으면 사용자가 하지 않은 무응답을 지어내게 된다.
+        return signal?.aborted ? RESULT.runStopped : RESULT.dabutLoginNoAnswer;
+      }
+    },
   };
 
   const listProjects: ToolSpec = {
@@ -1331,6 +1445,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
 
       onProgress(PROGRESS.dabutGenerating(String(keyword)));
 
+      // 최대 10분 걸리는 호출이다. 네이버에 쓰는 게 아니라 끊어도 반쯤 남는 것이 없어서 신호를 넣는다.
       const result = await generateManuscriptViaProject({
         baseUrl: getEndpoints().dabutBaseUrl,
         token: getSchedulerToken() ?? '',
@@ -1339,6 +1454,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
         ref: ref ? String(ref) : undefined,
         businessName: businessName ? String(businessName) : undefined,
         withImages: withImages === true,
+        signal,
       });
 
       if (!result.content) return RESULT.dabutEmpty;
@@ -1420,14 +1536,19 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
         projectId: { type: 'string', description: PARAM.scheduleProjectId },
         keywordCategory: { type: 'string', description: PARAM.keywordCategory },
       },
-      required: ['scheduleDate', 'accountId', 'keywords'],
+      required: ['scheduleDate', 'accountId', 'keywords', 'startHour'],
       additionalProperties: false,
     },
     run: async (input) => {
       // accountId 는 다붓이 준 계정 id 라서 스케줄러가 토큰 없이는 크리덴셜을 풀지 못한다.
       if (!getSchedulerToken()) return RESULT.dabutNotLoggedIn;
 
-      const built = buildAutoScheduleInput(input, knownProjectIds);
+      // 실행이 자정을 넘길 수 있으므로 부를 때마다 읽는다.
+      const built = buildAutoScheduleInput(input, {
+        knownProjectIds,
+        today: kstToday(),
+        nowMinutes: kstMinutesNow(),
+      });
       if (!built.ok) return built.result;
 
       const { scheduleDate, queues } = built.input;
@@ -1713,11 +1834,25 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
 
       onProgress(PROGRESS.exposureStarting(target.label));
 
-      const { code, output } = await runPackageScript({
+      /*
+       * 30분까지 도는 자식 프로세스다. 정지를 눌러도 여기서 막혀 있으면 버튼이 아무 일도 안 하는
+       * 것처럼 보인다. 네이버에 글을 쓰는 도구가 아니라 다시 돌리면 되는 로컬 점검이고,
+       * 타임아웃 경로가 이미 같은 SIGTERM 을 보내고 있어서 새로 생기는 위험이 없다.
+       */
+      const result = await runPackageScript({
         cwd: exposureBotDir,
         script: target.script,
         onLine: (line) => onProgress(line.slice(0, 160)),
+        signal,
+      }).catch((error: unknown) => {
+        if (signal?.aborted) return null;
+        throw error;
       });
+
+      // 끝까지 돈 결과는 정지를 눌렀더라도 버리지 않는다. 30분짜리를 다시 돌리게 만들 이유가 없다.
+      if (!result) return RESULT.runStopped;
+
+      const { code, output } = result;
 
       return code === 0
         ? RESULT.exposureDone(target.label, output.slice(-1500))

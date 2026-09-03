@@ -8,8 +8,6 @@ import { IMAGE_SOURCES, MANUSCRIPT_TYPES, SCHEDULE_STATUSES } from './scheduler-
  * 사용자에게 보이는 UI 문구는 messages.ts 에 있다.
  */
 
-/** 설정 패널의 서비스 주소 칸 이름. 모델이 사용자에게 안내할 때 이 이름을 그대로 부른다. */
-const SERVICE_URLS_FIELD = '서비스 화면 주소';
 
 export const TOOL_DESCRIPTIONS = {
   listAccounts:
@@ -76,13 +74,15 @@ export const PARAM_DESCRIPTIONS = {
   ].join(' '),
   formChoiceItems:
     '보기 목록. 보기 하나는 { label, value } 다. label 은 사용자가 보는 글자, value 는 답으로 돌아오는 값이다. 이름과 id 가 다르면 label 에 이름을, value 에 id 를 넣는다. 둘이 같아도 되지만 둘 다 채운다.',
-  scheduleDate: 'YYYY-MM-DD 형식의 실제 날짜. 월과 일은 두 자리로 쓴다',
+  scheduleDate:
+    'YYYY-MM-DD 형식의 실제 날짜. 월과 일은 두 자리로 쓴다. 오늘이거나 그 뒤여야 한다. 오늘 날짜는 시스템 프롬프트에 적혀 있다',
   manuscriptType: `원고 스타일. 아래 목록 밖의 값을 넣으면 스케줄러가 거부한다: ${MANUSCRIPT_TYPES.join(', ')}. projectId 를 넘기면 원고 생성에서는 이 값이 무시되지만 발행 모드 계산에는 그대로 쓰인다`,
   imageSource: `본문에 넣을 이미지를 어디서 가져올지: ${IMAGE_SOURCES.join(', ')}. 안 주면 ai 로 돈다`,
   scheduleProjectId:
     'list_dabut_projects 가 이번 실행에서 돌려준 프로젝트 id. 목록에 없던 id 는 거부된다. 넘기면 원고를 그 프로젝트 방식으로 뽑는다(원고 생성에서만 manuscriptType 을 대신한다). 다붓 로그인이 되어 있을 때만 쓴다',
   postsPerDay: '하루에 몇 건 발행할지. 1 에서 10 사이',
-  startHour: '첫 글을 몇 시에 올릴지. 0 에서 23 사이',
+  startHour:
+    '첫 글을 몇 시에 올릴지. 0 에서 23 사이. 필수다. 사용자가 말하지 않았으면 ask_user_form 으로 물어보고, 짐작해서 채우지 않는다',
   intervalMinutes: '글 사이 간격(분). 10 에서 720 사이',
   keywordCategory: '이 예약 묶음에 붙일 카테고리. 없으면 생략',
   blogName: '스케줄러 계정에 등록된 블로그 이름. 없으면 생략',
@@ -136,6 +136,8 @@ export const TOOL_RESULTS = {
   dabutNotLoggedIn: '다붓 로그인이 안 되어 있다. dabut_login 도구로 바로 로그인을 받아라.',
   dabutLoginDone: (label: string) => `${label} 으로 로그인됐다. 이어서 진행할 것.`,
   dabutLoginSkipped: '사용자가 로그인을 건너뛰었다. generate_manuscript 로 대체할 것.',
+  dabutLoginNoAnswer:
+    '사용자가 다붓 로그인 카드에 답하지 않아 시간이 지났다. 로그인되지 않았다. 다시 부르지 말고, 다붓 로그인이 필요하다는 것을 한 줄로 알리고 멈출 것.',
   noDabutProjects: '이 계정에 만들어 둔 프로젝트가 없다. 다붓 앱에서 먼저 프로젝트를 만들어야 한다.',
   projectNotFound: (id: string) => `프로젝트 ${id} 를 찾지 못했다. list_dabut_projects 로 확인할 것.`,
   noSchedulerAccounts: '스케줄러에 등록된 계정이 없다.',
@@ -143,6 +145,20 @@ export const TOOL_RESULTS = {
   emptyKeywords: '키워드가 비어 있다.',
   schedulerAccountRequired: 'accountId 가 비어 있다. list_scheduler_accounts 로 id 를 먼저 받을 것.',
   scheduleDateRequired: 'scheduleDate 가 비어 있다. YYYY-MM-DD 로 넣을 것. 날짜를 모르면 사용자에게 물어볼 것.',
+  /**
+   * 지난 날짜는 스케줄러가 거르지 않는다. 그대로 등록되면 워커가 밀린 job 으로 보고 바로 집어간다.
+   * 사용자가 말한 적 없는 시각에 글이 올라가므로 여기서 막는다.
+   */
+  scheduleDatePast: (value: string, today: string) =>
+    `${value} 는 오늘(${today}) 보다 이전이다. 지난 날짜로는 예약을 걸 수 없다. 스케줄러가 밀린 예약으로 보고 바로 발행할 수 있다. 오늘이거나 그 뒤 날짜를 넣을 것. 사용자가 말한 날짜가 애매하면 ask_user_form 으로 확인할 것.`,
+  /**
+   * 날짜만 봐서는 오늘 22시에 "오늘 06시" 예약을 거는 것을 못 막는다. 그것도 지난 날짜와 똑같이
+   * 밀린 job 이 되어 워커가 바로 집어간다. 그래서 오늘인 경우에만 시각까지 본다.
+   */
+  scheduleStartHourPast: (startHour: number, today: string, nowHour: number) =>
+    `${today} ${startHour}시는 이미 지났다(지금 KST ${nowHour}시). 지난 시각으로 예약을 걸면 스케줄러가 밀린 예약으로 보고 바로 발행할 수 있다. 오늘 걸려면 지금보다 뒤 시각을, 아니면 내일 이후 날짜를 넣을 것. 사용자가 말한 시각이 애매하면 ask_user_form 으로 확인할 것.`,
+  scheduleStartHourRequired:
+    'startHour 가 비어 있다. 첫 글을 몇 시에 올릴지 정하지 않으면 스케줄러 기본값으로 걸린다. 0 에서 23 사이 숫자를 넣을 것. 모르면 ask_user_form 으로 사용자에게 물어볼 것.',
   unknownManuscriptType: (value: string) =>
     `${value} 는 스케줄러가 아는 원고 스타일이 아니다. 아래 중에서 고를 것: ${MANUSCRIPT_TYPES.join(', ')}`,
   unknownImageSource: (value: string) =>
@@ -251,8 +267,9 @@ export const TOOL_RESULTS = {
   serviceNotFound: (name: string) =>
     `${name} 은 아는 서비스가 아니다. list_services 로 목록을 확인할 것.`,
   serviceNotConfigured: (name: string) =>
-    `${name} 주소가 아직 설정되어 있지 않아 아무것도 열지 않았다. 주소를 지어내지 말고, 사용자에게 설정 패널의 '${SERVICE_URLS_FIELD}' 에 ${name} 주소를 넣어달라고 알릴 것.`,
-  noServicesConfigured: `설정된 서비스 주소가 하나도 없다. 열 수 있는 화면이 없다. 주소를 지어내지 말고, 사용자에게 설정 패널의 '${SERVICE_URLS_FIELD}' 에 주소를 넣어달라고 알릴 것.`,
+    `${name} 주소가 비어 있어 아무것도 열지 않았다. 주소를 지어내지 말고, ${name} 주소를 몰라서 열지 못했다고 사용자에게 알릴 것.`,
+  noServicesConfigured:
+    '주소가 있는 서비스가 하나도 없다. 열 수 있는 화면이 없다. 주소를 지어내지 말고, 열 수 있는 화면이 없다고 사용자에게 알릴 것.',
   serviceOpened: (name: string, url: string) => `${name} 을 탭으로 열었다: ${url}`,
   exposureDirUnset: '노출지기 저장소 경로가 설정되어 있지 않다. 사용자에게 설정에서 경로를 넣어달라고 안내할 것.',
   exposureNoJobs: (dir: string) =>
@@ -284,6 +301,12 @@ export const TOOL_RESULTS = {
     titleMismatch: '제목이 달라 건너뜀',
     unknown: '지워졌는지 확인 못 함',
   },
+  /** 배치 중간에 정지가 걸렸을 때 남은 글에 붙는 상태. 손대지 않았다는 뜻이다. */
+  deleteStatusStopped: '정지로 건너뜀',
+  deleteStoppedBeforeStart:
+    '사용자가 정지를 눌러서 아무 글도 지우지 않았다. 다시 부르지 말고, 삭제하지 않았다는 것만 알릴 것.',
+  toolSkippedByStop: '사용자가 실행을 멈춰서 이 도구는 실행하지 않았다.',
+  runStopped: '사용자가 실행을 멈췄다. 이어서 하지 말고 여기서 끝낼 것.',
 } as const;
 
 export const MANUSCRIPT_SYSTEM = `너는 네이버 블로그 원고를 쓰는 한국어 작가다.
@@ -325,12 +348,11 @@ const serviceSection = () => {
   if (!summary) {
     return `## 사용자가 쓰는 서비스
 
-아직 주소가 설정된 서비스가 없다. open_service 로 열 수 있는 화면이 하나도 없다.
-서비스 이름이 나오면 주소를 추측하거나 지어내지 말고, 설정 패널의 '${SERVICE_URLS_FIELD}' 에
-주소를 넣어야 열어드릴 수 있다고 한 줄로 알린다.`;
+아직 주소가 있는 서비스가 없다. open_service 로 열 수 있는 화면이 하나도 없다.
+서비스 이름이 나오면 주소를 추측하거나 지어내지 말고, 그 화면 주소를 몰라서 열지 못한다고 한 줄로 알린다.`;
   }
 
-  return `## 사용자가 쓰는 서비스 (아래 주소는 사용자가 직접 넣은 값이다. 다시 묻지 마라)
+  return `## 사용자가 쓰는 서비스 (아래 주소는 이 앱이 알고 있는 값이다. 사용자에게 다시 묻지 마라)
 
 ${summary}
 
@@ -338,12 +360,23 @@ ${summary}
 여기 없는 이름은 주소를 모르는 것이다. 지어내지 말고 설정에서 넣어달라고 알린다.`;
 };
 
-/** 서비스 주소를 설정에서 덮어쓴 뒤에 읽어야 하므로 상수가 아니라 함수다. */
-export const buildAgentSystemPrompt = () => `너는 GNG Browser 안에서 도는 네이버 작업 에이전트다.
+/**
+ * 서비스 주소를 설정에서 덮어쓴 뒤에 읽어야 하므로 상수가 아니라 함수다.
+ * 오늘 날짜는 인자로 받는다. 여기서 시계를 읽으면 프롬프트 테스트가 실행 시각에 묶인다.
+ */
+export const buildAgentSystemPrompt = ({ today }: { today: string }) =>
+  `너는 GNG Browser 안에서 도는 네이버 작업 에이전트다.
 사용자가 한국어로 시키는 일을 도구를 써서 실제로 실행한다.
 
 너는 이 사용자의 네이버 관련 서비스들을 지휘한다.
 원고 생성은 다붓 백엔드, 예약 발행은 블로그 스케줄러, 노출체크는 노출지기를 도구로 부른다.
+
+## 오늘 날짜
+
+오늘은 ${today} 다. 시간대는 KST(한국 표준시)다.
+"오늘", "내일", "모레", "이번 주 금요일" 은 전부 이 날짜에서 계산한다. 기억에 있는 날짜를 쓰지 않는다.
+예약 날짜는 오늘이거나 그 뒤여야 한다. 지난 날짜로 예약을 걸면 도구가 거부한다.
+오늘로 예약할 때는 startHour 도 지금보다 뒤여야 한다. 이미 지난 시각은 도구가 거부한다.
 
 ${serviceSection()}
 

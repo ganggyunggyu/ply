@@ -44,12 +44,12 @@ test('스킴이 틀린 칸은 저장 대상에서 빠지고 이름이 남는다'
   assert.deepEqual(next, { c: 'https://sheet.internal' });
 });
 
-test('주소를 넣은 쿠키 서비스만 로그인 칩이 된다', () => {
+test('주소가 있는 쿠키 서비스만 로그인 칩이 된다', () => {
   const chips = cookieLoginServices([
-    item({ key: 'set', custom: true }),
-    item({ key: 'unset' }),
-    item({ key: 'api', custom: true, kind: 'api' }),
-    item({ key: 'open', custom: true, auth: 'none' }),
+    item({ key: 'set' }),
+    item({ key: 'blank', url: '' }),
+    item({ key: 'api', kind: 'api' }),
+    item({ key: 'open', auth: 'none' }),
   ]);
 
   assert.deepEqual(chips.map(({ key }) => key), ['set']);
@@ -57,7 +57,7 @@ test('주소를 넣은 쿠키 서비스만 로그인 칩이 된다', () => {
 
 test('칩은 서비스 주소와 노출지기 경로를 함께 센다', () => {
   const states = connectionStates(
-    [item({ key: 'a', custom: true }), item({ key: 'b' })],
+    [item({ key: 'a' }), item({ key: 'b', url: '' })],
     '/tmp/bot',
   );
 

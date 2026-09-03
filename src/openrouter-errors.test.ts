@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AxiosError, AxiosHeaders } from 'axios';
+import { ERRORS } from './messages';
 import { describeRequestError } from './openrouter';
 
 const httpError = (status: number, message?: string) => {
@@ -39,4 +40,11 @@ test('5xx 와 네트워크 실패를 구분한다', () => {
 
 test('축 오류가 아니면 원문을 유지한다', () => {
   assert.equal(describeRequestError(new Error('그냥 에러'), 'x'), '그냥 에러');
+});
+
+test('400 은 서버가 죽었다고 말하지 않는다', () => {
+  const message = describeRequestError(httpError(400, '잘못된 요청'), 'x');
+
+  assert.ok(message.startsWith(ERRORS.requestRejected), message);
+  assert.equal(message.includes(ERRORS.openRouterDown), false);
 });

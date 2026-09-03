@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import type { AxiosInstance } from 'axios';
 import type { AccountStore } from './accounts';
 import type { QuestionField } from './bridge';
+import { toKstDate } from './clock';
 import { QUESTION_FORM_CANCEL } from './constants';
 import { CONFIRM, ERRORS } from './messages';
 import {
@@ -23,6 +24,7 @@ import { formatToolOutput } from './tool-output';
 import {
   buildAgentSystemPrompt,
   buildAutoScheduleInput,
+  stoppedDeleteRows,
   clampListLimit,
   countPublishedJobs,
   countStoppableJobs,
@@ -337,6 +339,23 @@ const STUB_ACCOUNT = { id: 'acc-a', label: '메인 계정', naverId: 'sampleblog
 /** list_dabut_projects 를 부르지 않은 실행. projectId 를 실으면 거부되어야 한다. */
 const NO_PROJECTS: ReadonlySet<string> = new Set<string>();
 
+/** 오늘을 고정한다. 실제 시계를 쓰면 과거 날짜 게이트가 날마다 다르게 판정된다. */
+const TODAY = '2026-09-01';
+
+/**
+ * 도구를 통째로 부르는 테스트는 진짜 시계를 탄다.
+ * 오늘로 걸면 startHour 가 지난 시각인지에 따라 결과가 하루 안에서도 달라지므로 내일로 건다.
+ */
+const kstTomorrow = () => toKstDate(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+/** startHour 는 필수라 기본값을 채워 준다. raw 가 주면 그 값이 이긴다. */
+const buildSchedule = (
+  raw: Record<string, unknown>,
+  knownProjectIds: ReadonlySet<string> = NO_PROJECTS,
+  today: string = TODAY,
+  nowMinutes = 0,
+) => buildAutoScheduleInput({ startHour: 9, ...raw }, { knownProjectIds, today, nowMinutes });
+
 const createStubContext = (
   cookieNames: string[] = ['NID_AUT', 'NID_SES'],
   answer: () => Promise<string> = async () => CONFIRM.deleteYes,
@@ -346,14 +365,33 @@ const createStubContext = (
   const spy = {
     askUserCalls: [] as string[],
     createTabCalls: 0,
+    createdTabIds: [] as number[],
+    createTabOptions: [] as { url?: string; openedByAgent?: boolean; focus?: boolean }[],
+    closedTabIds: [] as number[],
+    selectedTabIds: [] as number[],
     formCalls: [] as { question: string; fields: QuestionField[] }[],
   };
 
   const findAccount = (id: string) => (id === STUB_ACCOUNT.id ? STUB_ACCOUNT : undefined);
 
-  const createTab = () => {
+  let nextTabId = 1;
+
+  const createTab = (options: { url?: string; openedByAgent?: boolean; focus?: boolean } = {}) => {
     spy.createTabCalls += 1;
-    return 1;
+    spy.createTabOptions.push(options);
+    const tabId = nextTabId;
+    nextTabId += 1;
+    spy.createdTabIds.push(tabId);
+
+    return tabId;
+  };
+
+  const closeTab = (tabId: number) => {
+    spy.closedTabIds.push(tabId);
+  };
+
+  const selectTab = (tabId: number) => {
+    spy.selectedTabIds.push(tabId);
   };
 
   const askUser = async (question: string) => {
@@ -368,7 +406,7 @@ const createStubContext = (
 
   const context: ToolContext = {
     accountStore: { list: () => [STUB_ACCOUNT], find: findAccount } as unknown as AccountStore,
-    tabManager: { createTab } as unknown as TabManager,
+    tabManager: { createTab, closeTab, selectTab } as unknown as TabManager,
     cdpPort: 0,
     client: {} as AxiosInstance,
     writerModel: 'test/writer',
@@ -390,6 +428,91 @@ const findTool = (tools: ToolSpec[], name: string) => {
 
   return tool;
 };
+
+// ---------- 작업용 탭 정리 ----------
+
+test('publish_blog_post 는 도중에 실패해도 연 탭을 닫는다', async () => {
+  // cdpPort 가 0 이라 브라우저 연결에서 던진다. 그 경로에서도 탭이 남으면 안 된다.
+  const { context, spy } = createStubContext();
+
+  await assert.rejects(
+    findTool(createNaverTools(context), 'publish_blog_post').run({
+      accountId: STUB_ACCOUNT.id,
+      title: '제목',
+      body: '본문',
+    }),
+  );
+
+  assert.deepEqual(spy.closedTabIds, spy.createdTabIds);
+  assert.equal(spy.closedTabIds.length, 1);
+});
+
+test('list_my_posts 도 실패한 실행의 탭을 남기지 않는다', async () => {
+  const { context, spy } = createStubContext();
+
+  await assert.rejects(
+    findTool(createNaverTools(context), 'list_my_posts').run({ accountId: STUB_ACCOUNT.id }),
+  );
+
+  assert.deepEqual(spy.closedTabIds, spy.createdTabIds);
+});
+
+test('사용자에게 보여주려고 연 탭은 닫지 않는다', async (t) => {
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls({ 'exposure-dashboard': 'https://exposure.internal' });
+
+  const { context, spy } = createStubContext();
+  const tools = createNaverTools(context);
+
+  await findTool(tools, 'open_tab').run({ url: 'https://example.internal' });
+  await findTool(tools, 'open_service').run({ service: '노출지기' });
+
+  assert.equal(spy.createTabCalls, 2);
+  assert.deepEqual(spy.closedTabIds, []);
+});
+
+test('사용자가 열라고 시킨 탭은 화면에도 띄운다', async (t) => {
+  // 안 띄우면 화면은 그대로인데 모델은 "열었어요" 라고 보고한다.
+  t.after(() => applyServiceUrls({}));
+  applyServiceUrls({ 'exposure-dashboard': 'https://exposure.internal' });
+
+  const { context, spy } = createStubContext();
+  const tools = createNaverTools(context);
+
+  await findTool(tools, 'open_tab').run({ url: 'https://example.internal' });
+  await findTool(tools, 'open_service').run({ service: '노출지기' });
+
+  assert.deepEqual(
+    spy.createTabOptions.map(({ focus }) => focus),
+    [true, true],
+  );
+  // 사이드바 분류와 정리 판정이 이 값을 보므로 openedByAgent 는 그대로 둔다.
+  assert.deepEqual(
+    spy.createTabOptions.map(({ openedByAgent }) => openedByAgent),
+    [true, true],
+  );
+});
+
+test('작업용 탭은 여전히 화면을 뺏지 않는다', async () => {
+  const { context, spy } = createStubContext();
+
+  await findTool(createNaverTools(context), 'list_my_posts')
+    .run({ accountId: 'acc-a' })
+    .catch(() => undefined);
+
+  assert.equal(spy.createTabOptions.at(0)?.focus, undefined);
+});
+
+test('다붓 로그인 대기가 만료돼도 도구가 던지지 않는다', async () => {
+  const { context } = createStubContext();
+  context.requestDabutLogin = async () => {
+    throw new Error(ERRORS.dabutLoginTimeout);
+  };
+
+  const output = await findTool(createNaverTools(context), 'dabut_login').run({ reason: '원고 생성' });
+
+  assert.equal(output, RESULT.dabutLoginNoAnswer);
+});
 
 test('삭제 도구 두 개가 이름 충돌 없이 등록된다', () => {
   const { context } = createStubContext();
@@ -479,15 +602,16 @@ test('사용자가 답하지 않아도 ask_user 는 도구 실패로 새지 않�
   assert.equal(output, RESULT.userDidNotAnswer);
 });
 
-test('주소를 안 넣은 서비스는 열지 않고 설정으로 보낸다', async (t) => {
+test('주소를 안 넣어도 코드 기본값으로 연다', async (t) => {
+  // 설정 화면에서 서비스 주소 칸을 뺐다. 사용자가 넣을 자리가 없으니 기본값으로 열려야 한다.
   t.after(() => applyServiceUrls({}));
   applyServiceUrls({});
 
   const { context, spy } = createStubContext();
   const output = await findTool(createNaverTools(context), 'open_service').run({ service: '노출지기' });
 
-  assert.equal(output, RESULT.serviceNotConfigured('노출지기'));
-  assert.equal(spy.createTabCalls, 0);
+  assert.ok(output.startsWith('노출지기 을 탭으로 열었다'), output);
+  assert.equal(spy.createTabCalls, 1);
   assert.equal(output.includes('example.com'), false);
 });
 
@@ -512,18 +636,20 @@ test('모르는 이름과 미설정을 다른 말로 돌려준다', async (t) =>
   assert.equal(output, RESULT.serviceNotFound('없는서비스'));
 });
 
-test('list_services 는 미설정이면 목록 대신 안내를 준다', async (t) => {
+test('list_services 는 기본값이 있는 서비스를 전부 준다', async (t) => {
   t.after(() => applyServiceUrls({}));
   applyServiceUrls({});
 
   const { context } = createStubContext();
   const output = await findTool(createNaverTools(context), 'list_services').run({});
+  const rows = JSON.parse(output) as { key: string; url: string }[];
 
-  assert.equal(output, RESULT.noServicesConfigured);
+  assert.ok(rows.length > 0);
+  rows.forEach(({ url }) => assert.match(url, /^https:\/\//));
   assert.equal(output.includes('example.com'), false);
 });
 
-test('list_services 는 주소를 넣은 것만 준다', async (t) => {
+test('list_services 는 사용자가 넣은 주소를 우선한다', async (t) => {
   t.after(() => applyServiceUrls({}));
   applyServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
 
@@ -531,18 +657,17 @@ test('list_services 는 주소를 넣은 것만 준다', async (t) => {
   const output = await findTool(createNaverTools(context), 'list_services').run({});
   const rows = JSON.parse(output) as { key: string; url: string }[];
 
-  assert.deepEqual(rows.map(({ key }) => key), ['cafe-bot']);
-  assert.equal(rows[0]?.url, 'https://cafe.internal');
+  assert.equal(rows.find(({ key }) => key === 'cafe-bot')?.url, 'https://cafe.internal');
 });
 
-test('시스템 프롬프트는 미설정 주소를 싣지 않는다', async (t) => {
+test('시스템 프롬프트는 지어낸 주소를 싣지 않는다', async (t) => {
   t.after(() => applyServiceUrls({}));
 
   applyServiceUrls({});
-  assert.equal(buildAgentSystemPrompt().includes('example.com'), false);
+  assert.equal(buildAgentSystemPrompt({ today: TODAY }).includes('example.com'), false);
 
   applyServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
-  const prompt = buildAgentSystemPrompt();
+  const prompt = buildAgentSystemPrompt({ today: TODAY });
 
   assert.ok(prompt.includes('https://cafe.internal'));
   assert.equal(prompt.includes('example.com'), false);
@@ -772,7 +897,7 @@ test('보기를 고르면 라벨이 아니라 value 가 모델에게 간다', as
 // ---------- auto_schedule_posts ----------
 
 test('예약 계정은 dabutAccountId 로 실어 보낸다', () => {
-  const built = buildAutoScheduleInput(
+  const built = buildSchedule(
     {
       scheduleDate: '2026-09-10',
       accountId: '68b0f0aa11223344556677ff',
@@ -792,7 +917,7 @@ test('예약 계정은 dabutAccountId 로 실어 보낸다', () => {
 });
 
 test('projectId 와 imageSource 가 예약 페이로드까지 간다', () => {
-  const built = buildAutoScheduleInput(
+  const built = buildSchedule(
     {
       scheduleDate: '2026-09-10',
       accountId: 'acc',
@@ -822,7 +947,7 @@ test('projectId 와 imageSource 가 예약 페이로드까지 간다', () => {
 
 test('projectId 는 항목별 item_options 로도 실린다', () => {
   // 최상위 project_id 는 ScheduleJob 문서에 저장되지 않아 재실행하면 사라진다.
-  const built = buildAutoScheduleInput(
+  const built = buildSchedule(
     { scheduleDate: '2026-09-10', accountId: 'acc', keywords: ['가', '나', '다'], projectId: 'proj-1' },
     new Set(['proj-1']),
   );
@@ -842,7 +967,7 @@ test('projectId 는 항목별 item_options 로도 실린다', () => {
 });
 
 test('projectId 가 없으면 item_options 를 만들지 않는다', () => {
-  const built = buildAutoScheduleInput(
+  const built = buildSchedule(
     { scheduleDate: '2026-09-10', accountId: 'acc', keywords: ['가'] },
     NO_PROJECTS,
   );
@@ -856,11 +981,11 @@ test('목록에 없던 projectId 는 예약을 걸기 전에 거부한다', () =
   const base = { scheduleDate: '2026-09-10', accountId: 'acc', keywords: ['가'] };
 
   // list_dabut_projects 를 부르지 않고 id 를 지어낸 경우.
-  const guessed = buildAutoScheduleInput({ ...base, projectId: 'proj-9' }, NO_PROJECTS);
+  const guessed = buildSchedule({ ...base, projectId: 'proj-9' }, NO_PROJECTS);
   assert.equal(guessed.ok === false ? guessed.result : '', RESULT.projectNotListed);
 
   // 목록은 받았지만 다른 id 를 실은 경우. 틀린 프로젝트는 몇 시간 뒤 생성 시점에나 드러난다.
-  const wrong = buildAutoScheduleInput({ ...base, projectId: 'proj-9' }, new Set(['proj-1']));
+  const wrong = buildSchedule({ ...base, projectId: 'proj-9' }, new Set(['proj-1']));
   assert.equal(wrong.ok === false ? wrong.result : '', RESULT.projectNotFound('proj-9'));
 });
 
@@ -868,31 +993,142 @@ test('날짜 형식이 어긋나면 스케줄러 500 을 맞기 전에 막는다
   const base = { accountId: 'acc', keywords: ['가'] };
 
   // 스케줄러의 schedule_date 에는 regex 가 없다. 한 자리 월/일은 Invalid Date 로 500 이 된다.
-  const loose = buildAutoScheduleInput({ ...base, scheduleDate: '2026-9-2' }, NO_PROJECTS);
+  const loose = buildSchedule({ ...base, scheduleDate: '2026-9-2' }, NO_PROJECTS);
   assert.equal(loose.ok === false ? loose.result : '', RESULT.scheduleDateFormat('2026-9-2'));
 
-  const impossible = buildAutoScheduleInput({ ...base, scheduleDate: '2026-02-31' }, NO_PROJECTS);
+  const impossible = buildSchedule({ ...base, scheduleDate: '2026-02-31' }, NO_PROJECTS);
   assert.equal(impossible.ok === false ? impossible.result : '', RESULT.scheduleDateFormat('2026-02-31'));
 
-  assert.equal(buildAutoScheduleInput({ ...base, scheduleDate: '2026-09-10' }, NO_PROJECTS).ok, true);
+  assert.equal(buildSchedule({ ...base, scheduleDate: '2026-09-10' }, NO_PROJECTS).ok, true);
+});
+
+test('지난 날짜는 예약을 걸기 전에 거부한다', () => {
+  const base = { accountId: 'acc', keywords: ['가'], startHour: 9 };
+
+  // 스케줄러는 지난 날짜를 거르지 않는다. 워커가 밀린 job 으로 보고 바로 집어간다.
+  const yesterday = buildAutoScheduleInput(
+    { ...base, scheduleDate: '2026-08-31' },
+    { knownProjectIds: NO_PROJECTS, today: TODAY, nowMinutes: 0 },
+  );
+
+  assert.equal(yesterday.ok, false);
+  assert.equal(
+    yesterday.ok === false ? yesterday.result : '',
+    RESULT.scheduleDatePast('2026-08-31', TODAY),
+  );
+});
+
+test('오늘이라도 이미 지난 시각이면 거부한다', () => {
+  // 날짜만 보면 KST 22시에 "오늘 06시" 를 거는 것을 못 막는다. 그것도 밀린 job 이 된다.
+  const built = buildSchedule(
+    { scheduleDate: TODAY, accountId: 'acc', keywords: ['가'], startHour: 6 },
+    NO_PROJECTS,
+    TODAY,
+    22 * 60,
+  );
+
+  assert.equal(built.ok, false);
+  assert.equal(
+    built.ok === false ? built.result : '',
+    RESULT.scheduleStartHourPast(6, TODAY, 22),
+  );
+});
+
+test('오늘 정각에 그 시각으로 거는 것은 통과한다', () => {
+  const built = buildSchedule(
+    { scheduleDate: TODAY, accountId: 'acc', keywords: ['가'], startHour: 15 },
+    NO_PROJECTS,
+    TODAY,
+    15 * 60,
+  );
+
+  assert.equal(built.ok, true);
+});
+
+test('내일이면 이른 시각이어도 통과한다', () => {
+  const built = buildSchedule(
+    { scheduleDate: '2026-09-10', accountId: 'acc', keywords: ['가'], startHour: 1 },
+    NO_PROJECTS,
+    TODAY,
+    23 * 60,
+  );
+
+  assert.equal(built.ok, true);
+});
+
+test('멈춘 뒤 남은 삭제 대상은 손대지 않았다고 표에 남는다', () => {
+  // 표에서 빼면 모델이 "전부 지웠다" 로 읽고 사용자에게 그렇게 보고한다.
+  const rows = stoppedDeleteRows([
+    { logNo: '111111111111', title: '가' },
+    { logNo: '222222222222', title: '나' },
+  ]);
+
+  assert.deepEqual(
+    rows.map(({ status }) => status),
+    [RESULT.deleteStatusStopped, RESULT.deleteStatusStopped],
+  );
+  assert.deepEqual(
+    rows.map(({ logNo }) => logNo),
+    ['111111111111', '222222222222'],
+  );
+  assert.equal(rows.every(({ status }) => status !== RESULT.deleteStatus.deleted), true);
+});
+
+test('멈추지 않았으면 건너뛴 행이 생기지 않는다', () => {
+  assert.deepEqual(stoppedDeleteRows([]), []);
+});
+
+test('정지된 실행에서는 다붓 로그인 무응답이라고 적지 않는다', async () => {
+  const controller = new AbortController();
+  const { context } = createStubContext();
+  context.signal = controller.signal;
+  context.requestDabutLogin = async () => {
+    throw new Error(ERRORS.runCancelled);
+  };
+  controller.abort();
+
+  const output = await findTool(createNaverTools(context), 'dabut_login').run({ reason: '원고 생성' });
+
+  assert.equal(output, RESULT.runStopped);
+});
+
+test('오늘 날짜는 통과한다', () => {
+  const built = buildAutoScheduleInput(
+    { scheduleDate: TODAY, accountId: 'acc', keywords: ['가'], startHour: 9 },
+    { knownProjectIds: NO_PROJECTS, today: TODAY, nowMinutes: 0 },
+  );
+
+  assert.equal(built.ok, true);
+  assert.equal(built.ok === true ? built.input.scheduleDate : '', TODAY);
+});
+
+test('startHour 가 빠지면 서버 기본값으로 새기 전에 막는다', () => {
+  // 빠진 값은 hub 가 body 에서 통째로 뺀다. 사용자가 정한 적 없는 시각에 글이 올라간다.
+  const built = buildAutoScheduleInput(
+    { scheduleDate: '2026-09-10', accountId: 'acc', keywords: ['가'] },
+    { knownProjectIds: NO_PROJECTS, today: TODAY, nowMinutes: 0 },
+  );
+
+  assert.equal(built.ok, false);
+  assert.equal(built.ok === false ? built.result : '', RESULT.scheduleStartHourRequired);
 });
 
 test('스케줄러가 모르는 스타일과 이미지 출처는 부르기 전에 막는다', () => {
   const base = { scheduleDate: '2026-09-10', accountId: 'acc', keywords: ['가'] };
 
-  const badType = buildAutoScheduleInput({ ...base, manuscriptType: '맛집v3' }, NO_PROJECTS);
+  const badType = buildSchedule({ ...base, manuscriptType: '맛집v3' }, NO_PROJECTS);
   assert.equal(badType.ok, false);
   assert.equal(badType.ok === false ? badType.result : '', RESULT.unknownManuscriptType('맛집v3'));
 
-  const badSource = buildAutoScheduleInput({ ...base, imageSource: 'unsplash' }, NO_PROJECTS);
+  const badSource = buildSchedule({ ...base, imageSource: 'unsplash' }, NO_PROJECTS);
   assert.equal(badSource.ok, false);
   assert.equal(badSource.ok === false ? badSource.result : '', RESULT.unknownImageSource('unsplash'));
 
   MANUSCRIPT_TYPES.forEach((manuscriptType) =>
-    assert.equal(buildAutoScheduleInput({ ...base, manuscriptType }, NO_PROJECTS).ok, true),
+    assert.equal(buildSchedule({ ...base, manuscriptType }, NO_PROJECTS).ok, true),
   );
   IMAGE_SOURCES.forEach((imageSource) =>
-    assert.equal(buildAutoScheduleInput({ ...base, imageSource }, NO_PROJECTS).ok, true),
+    assert.equal(buildSchedule({ ...base, imageSource }, NO_PROJECTS).ok, true),
   );
 });
 
@@ -900,21 +1136,21 @@ test('스케줄러 범위 밖의 숫자는 400 을 맞기 전에 막는다', () 
   const base = { scheduleDate: '2026-09-10', accountId: 'acc', keywords: ['가'] };
   const { intervalMinutesMin, intervalMinutesMax, postsPerDayMax, startHourMax } = SCHEDULE_LIMITS;
 
-  assert.equal(buildAutoScheduleInput({ ...base, intervalMinutes: 5 }, NO_PROJECTS).ok, false);
-  assert.equal(buildAutoScheduleInput({ ...base, postsPerDay: postsPerDayMax + 1 }, NO_PROJECTS).ok, false);
-  assert.equal(buildAutoScheduleInput({ ...base, startHour: startHourMax + 1 }, NO_PROJECTS).ok, false);
-  assert.equal(buildAutoScheduleInput({ ...base, intervalMinutes: intervalMinutesMin }, NO_PROJECTS).ok, true);
-  assert.equal(buildAutoScheduleInput({ ...base, intervalMinutes: intervalMinutesMax }, NO_PROJECTS).ok, true);
+  assert.equal(buildSchedule({ ...base, intervalMinutes: 5 }, NO_PROJECTS).ok, false);
+  assert.equal(buildSchedule({ ...base, postsPerDay: postsPerDayMax + 1 }, NO_PROJECTS).ok, false);
+  assert.equal(buildSchedule({ ...base, startHour: startHourMax + 1 }, NO_PROJECTS).ok, false);
+  assert.equal(buildSchedule({ ...base, intervalMinutes: intervalMinutesMin }, NO_PROJECTS).ok, true);
+  assert.equal(buildSchedule({ ...base, intervalMinutes: intervalMinutesMax }, NO_PROJECTS).ok, true);
 });
 
 test('빈 키워드와 빈 계정은 네트워크를 타기 전에 걸린다', () => {
-  const empty = buildAutoScheduleInput({ scheduleDate: '2026-09-10', accountId: 'acc', keywords: [] }, NO_PROJECTS);
+  const empty = buildSchedule({ scheduleDate: '2026-09-10', accountId: 'acc', keywords: [] }, NO_PROJECTS);
   assert.equal(empty.ok === false ? empty.result : '', RESULT.emptyKeywords);
 
-  const noAccount = buildAutoScheduleInput({ scheduleDate: '2026-09-10', accountId: ' ', keywords: ['가'] }, NO_PROJECTS);
+  const noAccount = buildSchedule({ scheduleDate: '2026-09-10', accountId: ' ', keywords: ['가'] }, NO_PROJECTS);
   assert.equal(noAccount.ok === false ? noAccount.result : '', RESULT.schedulerAccountRequired);
 
-  const noDate = buildAutoScheduleInput({ scheduleDate: '', accountId: 'acc', keywords: ['가'] }, NO_PROJECTS);
+  const noDate = buildSchedule({ scheduleDate: '', accountId: 'acc', keywords: ['가'] }, NO_PROJECTS);
   assert.equal(noDate.ok === false ? noDate.result : '', RESULT.scheduleDateRequired);
 });
 
@@ -931,8 +1167,24 @@ test('auto_schedule_posts 스키마가 스케줄러 enum 을 그대로 노출한
   assert.equal(schema.additionalProperties, false);
 });
 
+test('시스템 프롬프트에 오늘 날짜와 타임존이 들어간다', () => {
+  const prompt = buildAgentSystemPrompt({ today: '2026-09-03' });
+
+  assert.ok(prompt.includes('2026-09-03'));
+  assert.ok(prompt.includes('KST'));
+});
+
+test('auto_schedule_posts 는 startHour 를 필수로 받는다', () => {
+  const { context } = createStubContext();
+  const schema = findTool(createNaverTools(context), 'auto_schedule_posts').parameters as {
+    required: string[];
+  };
+
+  assert.ok(schema.required.includes('startHour'));
+});
+
 test('시스템 프롬프트가 폼과 프로젝트 규칙을 싣는다', () => {
-  const prompt = buildAgentSystemPrompt();
+  const prompt = buildAgentSystemPrompt({ today: TODAY });
 
   assert.ok(prompt.includes('ask_user_form'));
   assert.ok(prompt.includes('list_dabut_projects'));
@@ -950,9 +1202,10 @@ test('스케줄러 호출이 실패하면 등록 완료로 보고하지 않는�
   );
 
   const output = await findTool(createNaverTools(context), 'auto_schedule_posts').run({
-    scheduleDate: '2026-09-10',
+    scheduleDate: kstTomorrow(),
     accountId: 'acc',
     keywords: ['가'],
+    startHour: 9,
   });
 
   assert.ok(output.startsWith('예약이 걸리지 않았다'), output);
@@ -968,9 +1221,10 @@ test('list_dabut_projects 를 부르지 않으면 projectId 를 실은 예약이
   );
 
   const output = await findTool(createNaverTools(context), 'auto_schedule_posts').run({
-    scheduleDate: '2026-09-10',
+    scheduleDate: kstTomorrow(),
     accountId: 'acc',
     keywords: ['가'],
+    startHour: 9,
     projectId: '68f1a2b3',
   });
 
@@ -980,9 +1234,10 @@ test('list_dabut_projects 를 부르지 않으면 projectId 를 실은 예약이
 test('다붓 로그인 없이는 예약을 걸지 않는다', async () => {
   const { context } = createStubContext();
   const output = await findTool(createNaverTools(context), 'auto_schedule_posts').run({
-    scheduleDate: '2026-09-10',
+    scheduleDate: kstTomorrow(),
     accountId: 'acc',
     keywords: ['가'],
+    startHour: 9,
   });
 
   // accountId 는 다붓이 준 id 라서 토큰이 없으면 스케줄러가 크리덴셜을 풀지 못한다.
@@ -1428,7 +1683,7 @@ test('계정 목록을 못 읽으면 예약을 읽지도 빈 결과로 뭉개지
 });
 
 test('시스템 프롬프트가 예약 확인 규칙을 싣는다', () => {
-  const prompt = buildAgentSystemPrompt();
+  const prompt = buildAgentSystemPrompt({ today: TODAY });
 
   assert.ok(prompt.includes('get_schedule'));
   assert.ok(prompt.includes('list_schedules'));

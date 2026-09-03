@@ -3,14 +3,17 @@ import { join } from 'path';
 import { createAccountStore, type SecretCrypto } from './accounts';
 import type { AgentQuestion, QuestionField } from './bridge';
 import { createNaverTools, buildAgentSystemPrompt } from './agent-tools';
+import { kstToday } from './clock';
 import {
   DEFAULT_CDP_PORT,
   PANEL_WIDTH,
+  PENDING_ANSWER_TIMEOUT_MS,
   WINDOW_HEIGHT,
   WINDOW_MIN_HEIGHT,
   WINDOW_MIN_WIDTH,
   WINDOW_WIDTH,
 } from './constants';
+import { createPendingRegistry } from './pending';
 import { AGENT_MODELS, WRITER_MODELS } from './models';
 import { createOpenRouterClient, runAgentLoop, type AgentEvent, type ChatMessage } from './openrouter';
 import { addProfile, listProfiles, partitionOf, removeProfile } from './profiles';
@@ -29,6 +32,14 @@ if (cdpPort > 0) {
   app.commandLine.appendSwitch('remote-debugging-port', String(cdpPort));
   app.commandLine.appendSwitch('remote-allow-origins', '*');
 }
+
+/*
+ * 에이전트 탭은 사용자 화면을 뺏지 않으므로 작업 내내 숨은 상태로 돈다.
+ * 숨은 렌더러가 백그라운드로 내려가면 타이머와 rAF 가 눌리고, playwright 의 대기가 rAF 폴링이라
+ * 로그인·발행·삭제가 타임아웃까지 매달릴 수 있다. 탭별 backgroundThrottling 과 같은 이유다.
+ */
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 
 const hasInstanceLock = app.requestSingleInstanceLock();
 
@@ -51,6 +62,10 @@ let tabManager: TabManager | null = null;
 let panelWidth = PANEL_WIDTH;
 let panelAnimation: NodeJS.Timeout | null = null;
 let agentRunning = false;
+let runSeq = 0;
+
+/** 실행 id -> 그 실행의 중단 스위치. 정지 버튼이 이걸 당긴다. */
+const runControllers = new Map<number, AbortController>();
 
 const PANEL_ANIMATION_MS = 190;
 const PANEL_FRAME_MS = 12;
@@ -78,44 +93,26 @@ const animatePanelWidth = (to: number) => {
     }
   }, PANEL_FRAME_MS);
 };
-let questionSeq = 0;
+/** 답을 안 하면 agentRunning 이 true 로 고착되어 앱 재시작 전까지 모든 실행이 막힌다.
+ *  그래서 자유입력과 폼이 같은 타이머·시퀀스·맵을 쓴다. */
+const questions = createPendingRegistry<string>({
+  timeoutMs: PENDING_ANSWER_TIMEOUT_MS,
+  onTimeout: () => new Error(ERRORS.questionTimeout),
+});
 
-const pendingQuestions = new Map<number, (answer: string) => void>();
-
-let dabutLoginSeq = 0;
-
-const pendingDabutLogins = new Map<number, (result: string) => void>();
+/** 로그인 카드도 같은 이유로 같은 타이머를 탄다. 여기가 안 풀리면 실행 전체가 굳는다. */
+const dabutLogins = createPendingRegistry<string>({
+  timeoutMs: PENDING_ANSWER_TIMEOUT_MS,
+  onTimeout: () => new Error(ERRORS.dabutLoginTimeout),
+});
 
 /** 에이전트가 부르면 패널에 로그인 카드를 띄우고, 사용자가 끝낼 때까지 기다린다.
  *  비밀번호는 패널 → 메인 → 다붓 으로만 흐르고 모델은 보지 않는다. */
 const requestDabutLogin = (reason: string) =>
-  new Promise<string>((resolve) => {
-    dabutLoginSeq += 1;
-    pendingDabutLogins.set(dabutLoginSeq, resolve);
-    sendToPanel('agent:dabut-login', { id: dabutLoginSeq, reason });
-  });
+  dabutLogins.push((id) => sendToPanel('agent:dabut-login', { id, reason }));
 
-const QUESTION_TIMEOUT_MS = 10 * 60 * 1000;
-
-/** 답을 안 하면 agentRunning 이 true 로 고착되어 앱 재시작 전까지 모든 실행이 막힌다.
- *  그래서 자유입력과 폼이 같은 타이머·시퀀스·맵을 쓴다. */
 const pushQuestion = (payload: Omit<AgentQuestion, 'id'>) =>
-  new Promise<string>((resolve, reject) => {
-    questionSeq += 1;
-    const id = questionSeq;
-
-    const timer = setTimeout(() => {
-      pendingQuestions.delete(id);
-      reject(new Error(ERRORS.questionTimeout));
-    }, QUESTION_TIMEOUT_MS);
-
-    pendingQuestions.set(id, (answer) => {
-      clearTimeout(timer);
-      resolve(answer);
-    });
-
-    sendToPanel('agent:question', { id, ...payload });
-  });
+  questions.push((id) => sendToPanel('agent:question', { id, ...payload }));
 
 const askUser = (question: string, choices?: string[]) => pushQuestion({ question, choices });
 
@@ -251,6 +248,13 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
   const { agentModel, writerModel } = settings.get();
   const client = createOpenRouterClient(apiKey);
 
+  // 실행 id 별로 컨트롤러를 둔다. 지금은 한 번에 하나뿐이지만, 계정별 병렬 실행이 붙어도
+  // 이 자리를 다시 뜯지 않는다. 도구가 이 신호를 받아야 하므로 도구보다 먼저 만든다.
+  runSeq += 1;
+  const runId = runSeq;
+  const controller = new AbortController();
+  runControllers.set(runId, controller);
+
   const onEvent = (event: AgentEvent) => sendToPanel('agent:event', event);
   const tools = createNaverTools({
     accountStore: accountStore(),
@@ -265,6 +269,7 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
     askUser,
     askUserForm,
     requestDabutLogin,
+    signal: controller.signal,
   });
 
   agentRunning = true;
@@ -274,17 +279,34 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
     const messages = await runAgentLoop({
       client,
       model: agentModel,
-      system: buildAgentSystemPrompt(),
+      system: buildAgentSystemPrompt({ today: kstToday() }),
       tools,
       history: [...history, { role: 'user', content: userMessage }],
       onEvent,
+      signal: controller.signal,
     });
 
     return messages.filter((message) => message.role !== 'system');
   } finally {
+    runControllers.delete(runId);
     agentRunning = false;
     broadcastAgentStatus(false);
   }
+};
+
+/**
+ * 진행 중인 도구 호출은 끝까지 두고 다음 반복에서 멈춘다(openrouter.ts 참고).
+ * 대신 답을 기다리는 카드는 여기서 풀어 준다. 안 그러면 정지를 눌러도 사용자가 카드에
+ * 답할 때까지 실행이 붙잡혀 있어서 버튼이 아무 일도 안 하는 것처럼 보인다.
+ */
+const cancelAgentRuns = () => {
+  const running = runControllers.size;
+
+  runControllers.forEach((controller) => controller.abort());
+  questions.cancelAll(() => new Error(ERRORS.runCancelled));
+  dabutLogins.cancelAll(() => new Error(ERRORS.runCancelled));
+
+  return running > 0;
 };
 
 const registerIpcHandlers = () => {
@@ -333,14 +355,8 @@ const registerIpcHandlers = () => {
     runAgent(userMessage, history ?? []),
   );
   ipcMain.handle('agent:status', () => ({ running: agentRunning }));
-  ipcMain.handle('agent:answer', (_event, id: number, answer: string) => {
-    const resolve = pendingQuestions.get(id);
-    if (!resolve) return false;
-
-    pendingQuestions.delete(id);
-    resolve(answer);
-    return true;
-  });
+  ipcMain.handle('agent:cancel', () => cancelAgentRuns());
+  ipcMain.handle('agent:answer', (_event, id: number, answer: string) => questions.settle(id, answer));
   ipcMain.handle('services:endpoints', () => settingsStore().readEndpoints());
   ipcMain.handle('service:login', async (_event, input: { username: string; password: string }) => {
     const store = settingsStore();
@@ -353,14 +369,9 @@ const registerIpcHandlers = () => {
     return store.setSchedulerToken(token, label);
   });
   ipcMain.handle('service:logout', () => settingsStore().setSchedulerToken('', ''));
-  ipcMain.handle('agent:dabutLoginDone', (_event, id: number, result: string) => {
-    const resolve = pendingDabutLogins.get(id);
-    if (!resolve) return false;
-
-    pendingDabutLogins.delete(id);
-    resolve(result);
-    return true;
-  });
+  ipcMain.handle('agent:dabutLoginDone', (_event, id: number, result: string) =>
+    dabutLogins.settle(id, result),
+  );
 
   ipcMain.handle('services:setEndpoints', (_event, next: Record<string, string>) =>
     settingsStore().setEndpoints(next),

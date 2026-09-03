@@ -31,6 +31,7 @@ const browserApi = {
 
   runAgent: (message: string, history: unknown[]) => ipcRenderer.invoke('agent:run', message, history),
   getAgentStatus: () => ipcRenderer.invoke('agent:status'),
+  cancelAgent: () => ipcRenderer.invoke('agent:cancel'),
   answerAgent: (id: number, answer: string) => ipcRenderer.invoke('agent:answer', id, answer),
   getEndpoints: () => ipcRenderer.invoke('services:endpoints'),
   setEndpoints: (next: Record<string, string>) => ipcRenderer.invoke('services:setEndpoints', next),

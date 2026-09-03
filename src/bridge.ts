@@ -71,7 +71,7 @@ export type AgentEventView =
   | { type: 'tool_end'; name: string; output: string }
   | { type: 'tool_error'; name: string; message: string }
   | { type: 'usage'; promptTokens: number; completionTokens: number }
-  | { type: 'done'; reason: 'end' | 'max_iterations' };
+  | { type: 'done'; reason: 'end' | 'max_iterations' | 'cancelled'; hadOutput: boolean };
 
 export type ChatMessageView = { role: string; content: unknown; tool_calls?: unknown };
 
@@ -130,6 +130,8 @@ export type BridgeApi = {
 
   runAgent: (message: string, history: ChatMessageView[]) => Promise<ChatMessageView[]>;
   getAgentStatus: () => Promise<{ running: boolean }>;
+  /** 돌고 있던 실행이 있었으면 true. 진행 중인 도구 하나는 끝까지 돈다. */
+  cancelAgent: () => Promise<boolean>;
   answerAgent: (id: number, answer: string) => Promise<boolean>;
   getEndpoints: () => Promise<ServiceEndpointsView>;
   setEndpoints: (next: Partial<ServiceEndpointsView>) => Promise<PublicSettings>;

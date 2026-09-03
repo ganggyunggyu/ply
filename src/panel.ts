@@ -1,8 +1,17 @@
 import { renderMarkdown } from './markdown';
 import { formatToolOutput } from './tool-output';
-import { collectServiceUrls, connectionStates, cookieLoginServices } from './service-form';
+import { connectionStates, cookieLoginServices } from './service-form';
 import { CHAT, EMPTY_STATE, ONBOARDING, PANEL, SETTINGS } from './messages';
 import { QUESTION_FORM_CANCEL } from './constants';
+import {
+  addUsage,
+  EMPTY_USAGE,
+  formatCost,
+  formatTokenCount,
+  totalTokens,
+  usageCost,
+  type UsageTotal,
+} from './usage';
 import { buildChoiceOptions, buildFormEchoLines, findInvalidField } from './question-form';
 import type {
   AgentEventView,
@@ -38,11 +47,9 @@ const epSchedulerEl = document.getElementById('ep-scheduler') as HTMLInputElemen
 const epExposureEl = document.getElementById('ep-exposure') as HTMLInputElement;
 const saveEndpointsEl = document.getElementById('save-endpoints') as HTMLButtonElement;
 const endpointStatusEl = document.getElementById('endpoint-status') as HTMLElement;
-const serviceUrlListEl = document.getElementById('service-urls') as HTMLElement;
-const saveServiceUrlsEl = document.getElementById('save-service-urls') as HTMLButtonElement;
-const serviceUrlStatusEl = document.getElementById('service-url-status') as HTMLElement;
 const chipModelEl = document.getElementById('chip-model') as HTMLButtonElement;
 const chipServicesEl = document.getElementById('chip-services') as HTMLButtonElement;
+const chipUsageEl = document.getElementById('chip-usage') as HTMLElement;
 const schUserEl = document.getElementById('sch-user') as HTMLInputElement;
 const schPassEl = document.getElementById('sch-pass') as HTMLInputElement;
 const schLoginEl = document.getElementById('sch-login') as HTMLButtonElement;
@@ -51,6 +58,7 @@ const logEl = document.getElementById('log') as HTMLElement;
 const composerEl = document.getElementById('composer') as HTMLFormElement;
 const promptEl = document.getElementById('prompt') as HTMLTextAreaElement;
 const sendEl = document.getElementById('send') as HTMLButtonElement;
+const stopEl = document.getElementById('stop') as HTMLButtonElement;
 
 const OPENROUTER_KEYS_URL = 'https://openrouter.ai/keys';
 
@@ -60,9 +68,9 @@ let hasApiKey = false;
 let pendingMessage: string | null = null;
 /** 렌더러는 카탈로그를 빌드타임에 모른다. 설정 IPC 로 받아 여기에 담는다. */
 let serviceCatalog: ServiceCatalogItemView[] = [];
-/** 대화 한 번에 한 번만 알린다. 매 카드마다 같은 말을 반복하지 않는다. */
-let serviceUrlsNoticed = false;
-const serviceUrlInputs = new Map<string, HTMLInputElement>();
+/** 단가를 알아야 비용을 매긴다. 목록은 init 에서 한 번 받는다. */
+let agentPresets: ModelPreset[] = [];
+let usageTotal: UsageTotal = EMPTY_USAGE;
 
 /** Electron IPC 가 붙이는 "Error invoking remote method 'x': Error: " 접두사를 걷어낸다. */
 const readableError = (error: unknown) => {
@@ -330,70 +338,21 @@ const renderAccounts = (accounts: NaverAccount[]) => {
   }
 };
 
-const handleServiceUrlInput = (event: Event) => {
-  (event.currentTarget as HTMLInputElement).classList.remove('invalid');
-};
-
-const renderServiceUrls = (services: ServiceCatalogItemView[]) => {
-  serviceUrlInputs.clear();
-
-  serviceUrlListEl.replaceChildren(
-    ...services.map(({ key, name, url, defaultUrl, custom, description }) => {
-      const row = document.createElement('div');
-      row.className = 'row service-url-row';
-
-      const label = document.createElement('span');
-      label.className = 'service-url-name';
-      label.textContent = name;
-      label.title = description;
-
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.autocomplete = 'off';
-      input.placeholder = defaultUrl;
-      input.value = custom ? url : '';
-      input.addEventListener('input', handleServiceUrlInput);
-
-      serviceUrlInputs.set(key, input);
-      row.append(label, input);
-
-      return row;
-    }),
-  );
-
-  if (services.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'service-url-empty';
-    empty.textContent = SETTINGS.serviceUrlsEmpty;
-    serviceUrlListEl.append(empty);
-  }
-};
-
 /**
- * 카탈로그가 바뀔 수 있는 곳에서만 부른다 (init, 주소 저장).
- * 다른 설정 저장에서 부르면 사용자가 치고 있던 주소가 날아간다.
+ * 설정에서 서비스 주소 칸을 뺐다(그냥 탭으로 여는 화면이라 배포 주소 기본값으로 충분하다).
+ * 카탈로그 자체는 계속 받는다. 쿠키 로그인 카드와 연동 칩이 이 목록으로 그려진다.
  */
 const applySettings = (settings: PublicSettings) => {
   serviceCatalog = settings.services;
-  renderServiceUrls(settings.services);
-};
-
-/**
- * 주소를 하나도 안 넣었으면 설정으로 보낸다.
- * 이 안내가 없으면 "노출지기 열어줘" 가 아무것도 못 열고 이유도 안 보인다.
- */
-const noticeMissingServices = () => {
-  if (serviceUrlsNoticed) return;
-  if (serviceCatalog.some(({ custom }) => custom)) return;
-
-  serviceUrlsNoticed = true;
-  appendEntry(CHAT.roleAgent, ONBOARDING.serviceUrlsMissing);
 };
 
 const setRunning = (next: boolean) => {
   running = next;
   sendEl.disabled = next;
   sendEl.textContent = next ? CHAT.sendRunningLabel : CHAT.sendLabel;
+  // 정지 버튼은 돌고 있을 때만 보인다. 새 실행마다 다시 누를 수 있어야 한다.
+  stopEl.hidden = !next;
+  if (next) stopEl.disabled = false;
   document.body.dataset.running = String(next);
 };
 
@@ -494,6 +453,25 @@ const summarizeInput = (input: Record<string, unknown>) => {
     .slice(0, 240);
 };
 
+/** 누적 토큰과 대략적인 비용. 단가를 모르면 토큰만 보여준다. */
+const renderUsageChip = () => {
+  const tokens = totalTokens(usageTotal);
+
+  if (tokens === 0) {
+    chipUsageEl.hidden = true;
+    return;
+  }
+
+  const price = agentPresets.find(({ id }) => id === agentModelEl.value);
+  const cost = usageCost(usageTotal, price);
+  const label = formatTokenCount(tokens);
+
+  chipUsageEl.hidden = false;
+  chipUsageEl.title = CHAT.usageChipTitle;
+  chipUsageEl.textContent =
+    cost === null ? CHAT.usageChip(label) : CHAT.usageChipWithCost(label, formatCost(cost));
+};
+
 const handleAgentEvent = (event: AgentEvent) => {
   if (event.type === 'assistant' && event.text.trim()) {
     removeThinking();
@@ -502,9 +480,17 @@ const handleAgentEvent = (event: AgentEvent) => {
   if (event.type === 'tool_start') addStep(event.name, summarizeInput(event.input));
   if (event.type === 'tool_end') settleStep(event.name, 'done', event.output);
   if (event.type === 'tool_error') settleStep(event.name, 'error', event.message);
+  if (event.type === 'usage') {
+    usageTotal = addUsage(usageTotal, event);
+    renderUsageChip();
+  }
   if (event.type === 'done') {
     removeThinking();
+
     if (event.reason === 'max_iterations') appendEntry(CHAT.roleAgent, CHAT.stoppedTooLong, 'error');
+    else if (event.reason === 'cancelled') appendEntry(CHAT.roleSystem, CHAT.cancelled);
+    // 모델이 content 없이 툴콜도 없이 끝내면 화면에 아무것도 안 남는다. 그때만 폴백을 찍는다.
+    else if (!event.hadOutput) appendEntry(CHAT.roleAgent, CHAT.noOutput, 'error');
   }
 };
 
@@ -846,7 +832,6 @@ const requestApiKey = (lead: string) => {
         if (pendingMessage) {
           const next = pendingMessage;
           pendingMessage = null;
-          noticeMissingServices();
           void runMessage(next);
           return true;
         }
@@ -856,7 +841,6 @@ const requestApiKey = (lead: string) => {
           requestAccount(ONBOARDING.askAccountAfterKey);
         } else {
           appendEntry(CHAT.roleAgent, ONBOARDING.ready);
-          noticeMissingServices();
         }
 
         return true;
@@ -913,9 +897,17 @@ const requestAccount = (lead: string) => {
 
 /** 에이전트가 dabut_login 을 부르면 이 카드가 뜬다. 끝나면 결과를 메인으로 돌려준다. */
 const requestAgentDabutLogin = ({ id, reason }: { id: number; reason: string }) => {
-  const finish = (result: string) => {
-    void api.answerDabutLogin(id, result);
-    addThinking();
+  // 대기가 10분을 넘기면 메인이 false 를 준다. 그대로 삼키면 사용자는 눌렀는데 아무 일도
+  // 안 일어난 것처럼 보이고, 스피너만 계속 돈다.
+  const finish = async (result: string) => {
+    const accepted = await api.answerDabutLogin(id, result);
+
+    if (accepted) {
+      addThinking();
+      return;
+    }
+
+    appendEntry(CHAT.roleSystem, CHAT.answerExpired, 'error');
   };
 
   appendCard({
@@ -934,14 +926,16 @@ const requestAgentDabutLogin = ({ id, reason }: { id: number; reason: string }) 
         renderSchedulerStatus(settings);
         void refreshServiceChip();
         appendEntry(CHAT.roleAgent, ONBOARDING.serviceLoginSaved(settings.schedulerLabel));
-        finish(`로그인 성공: ${settings.schedulerLabel}`);
+        await finish(`로그인 성공: ${settings.schedulerLabel}`);
         return true;
       } catch (error) {
         setError(readableError(error));
         return false;
       }
     },
-    onSkip: () => finish('사용자가 로그인을 건너뛰었다'),
+    onSkip: () => {
+      void finish('사용자가 로그인을 건너뛰었다');
+    },
   });
 };
 
@@ -978,7 +972,6 @@ const requestCookieLogin = () => {
 
   if (services.length === 0) {
     appendEntry(CHAT.roleAgent, ONBOARDING.ready);
-    noticeMissingServices();
     return;
   }
 
@@ -1024,11 +1017,11 @@ const handleModelChipClick = () => {
   agentModelEl.focus();
 };
 
-/** 칩이 곧 설정으로 가는 문이다. 주소가 비어 있을 때 갈 곳이 여기밖에 없다. */
+/** 칩이 곧 설정으로 가는 문이다. 남은 연동 값은 노출지기 저장소 경로와 다붓 계정이다. */
 const handleServiceChipClick = () => {
   settingsEl.hidden = false;
-  serviceUrlListEl.scrollIntoView({ block: 'nearest' });
-  serviceUrlInputs.values().next().value?.focus();
+  epExposureEl.scrollIntoView({ block: 'nearest' });
+  epExposureEl.focus();
 };
 
 const handleSchedulerPassKeydown = (event: KeyboardEvent) => {
@@ -1068,41 +1061,6 @@ const handleSaveEndpoints = async () => {
     void refreshServiceChip();
   } catch (error) {
     endpointStatusEl.textContent = readableError(error);
-  }
-};
-
-/** 전부 아니면 전무. 한 칸이라도 틀리면 IPC 를 아예 안 보낸다. */
-const handleSaveServiceUrls = async () => {
-  const drafts = serviceCatalog.flatMap(({ key, name }) => {
-    const input = serviceUrlInputs.get(key);
-    return input ? [{ key, name, raw: input.value }] : [];
-  });
-
-  const { next, normalized, invalid } = collectServiceUrls(drafts);
-
-  serviceUrlInputs.forEach((input, key) => {
-    input.value = normalized[key] ?? input.value;
-    input.classList.toggle('invalid', invalid.some((item) => item.key === key));
-  });
-
-  const [first] = invalid;
-
-  if (first) {
-    serviceUrlStatusEl.textContent = SETTINGS.serviceUrlInvalid(first.name);
-    serviceUrlInputs.get(first.key)?.focus();
-    return;
-  }
-
-  saveServiceUrlsEl.disabled = true;
-
-  try {
-    applySettings(await api.setServiceUrls(next));
-    serviceUrlStatusEl.textContent = SETTINGS.serviceUrlsSaved;
-    void refreshServiceChip();
-  } catch (error) {
-    serviceUrlStatusEl.textContent = readableError(error);
-  } finally {
-    saveServiceUrlsEl.disabled = false;
   }
 };
 
@@ -1177,6 +1135,13 @@ const handlePromptKeydown = (event: KeyboardEvent) => {
   }
 };
 
+/** 한 번만 누를 수 있게 잠근다. 실제 정지는 다음 반복에서 일어난다. */
+const handleStopClick = () => {
+  stopEl.disabled = true;
+  appendEntry(CHAT.roleSystem, CHAT.cancelRequested);
+  void api.cancelAgent();
+};
+
 const PLACEHOLDERS: Record<string, string> = {
   apiKeyPlaceholder: ONBOARDING.apiKeyPlaceholder,
   accountIdPlaceholder: ONBOARDING.accountIdPlaceholder,
@@ -1197,7 +1162,7 @@ const renderChips = (settings: PublicSettings) => {
   chipModelEl.title = CHAT.modelChipTitle;
 };
 
-/** 설정만 읽는다. applySettings 를 부르면 사용자가 치던 주소가 날아간다. */
+/** 칩만 다시 그린다. 설정 화면의 다른 입력칸은 건드리지 않는다. */
 const refreshServiceChip = async () => {
   try {
     const { services, endpoints } = await api.getSettings();
@@ -1235,9 +1200,6 @@ const applyStaticLabels = () => {
   set('lbl-writer-model', PANEL.writerModelField);
   set('lbl-endpoints', PANEL.endpointsField);
   set('save-endpoints', PANEL.endpointsSaveLabel);
-  set('lbl-services', PANEL.serviceUrlsField);
-  set('save-service-urls', PANEL.serviceUrlsSaveLabel);
-  set('service-url-hint', SETTINGS.serviceUrlsHint);
   set('endpoint-hint', SETTINGS.endpointsHint);
   set('lbl-scheduler', SETTINGS.serviceLoginField);
   set('sch-login', SETTINGS.serviceLoginLabel);
@@ -1246,8 +1208,11 @@ const applyStaticLabels = () => {
   set('account-hint', ONBOARDING.accountHint);
   set('composer-hint', CHAT.composerHint);
   set('send', CHAT.sendLabel);
+  set('stop', CHAT.stopLabel);
 
   sendEl.setAttribute('aria-label', CHAT.composerPlaceholder);
+  stopEl.setAttribute('aria-label', CHAT.stopTitle);
+  stopEl.title = CHAT.stopTitle;
 
   document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-ph]').forEach((el) => {
     const key = el.dataset.ph ?? '';
@@ -1257,13 +1222,17 @@ const applyStaticLabels = () => {
 
 const init = async () => {
   applyStaticLabels();
-  const [settings, models, accounts] = await Promise.all([
+  // 실행 중에 패널이 리로드되면 여기서만 상태를 되찾을 수 있다. 안 물어보면 정지 버튼도 안 뜨고
+  // 메시지를 보내면 agentBusy 로 튕긴다.
+  const [settings, models, accounts, status] = await Promise.all([
     api.getSettings(),
     api.listModels(),
     api.listAccounts(),
+    api.getAgentStatus(),
   ]);
 
   hasApiKey = settings.hasApiKey;
+  agentPresets = models.agent;
   keyStatusEl.textContent = settings.hasApiKey ? SETTINGS.keyStatusSaved : SETTINGS.keyStatusMissing;
   renderModelOptions(agentModelEl, models.agent, settings.agentModel);
   renderModelOptions(writerModelEl, models.writer, settings.writerModel);
@@ -1289,10 +1258,11 @@ const init = async () => {
     requestAccount(ONBOARDING.askAccountOnStart);
   } else {
     appendEntry(CHAT.roleAgent, ONBOARDING.readyShort);
-    noticeMissingServices();
   }
 
   if (hasApiKey && accounts.length > 0) renderEmptyState();
+
+  setRunning(status.running);
 
   api.onAgentRunning(setRunning);
   api.onAgentEvent(handleAgentEvent);
@@ -1313,12 +1283,12 @@ saveKeyEl.addEventListener('click', handleSaveKey);
 agentModelEl.addEventListener('change', handleAgentModelChange);
 writerModelEl.addEventListener('change', handleWriterModelChange);
 saveEndpointsEl.addEventListener('click', handleSaveEndpoints);
-saveServiceUrlsEl.addEventListener('click', handleSaveServiceUrls);
 schLoginEl.addEventListener('click', handleSchedulerLogin);
 schPassEl.addEventListener('keydown', handleSchedulerPassKeydown);
 addAccountEl.addEventListener('click', handleAddAccount);
 composerEl.addEventListener('submit', handleSubmit);
 promptEl.addEventListener('keydown', handlePromptKeydown);
+stopEl.addEventListener('click', handleStopClick);
 
 void init();
 

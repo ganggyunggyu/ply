@@ -1,6 +1,8 @@
 import { WebContentsView, type BaseWindow } from 'electron';
 import { CHROME_HEIGHT, HOME_URL, SIDEBAR_WIDTH } from './constants';
 import { partitionOf } from './profiles';
+import { shouldFocusNewTab } from './tab-focus';
+import { descendantTabIds } from './tab-tree';
 import { normalizeUrl } from './url';
 
 export type TabSnapshot = {
@@ -23,6 +25,8 @@ type Tab = {
   id: number;
   profileId: string;
   openedByAgent: boolean;
+  /** 이 탭을 띄운 탭. 팝업을 부모와 함께 정리하려고 남긴다. */
+  openerId?: number;
   view: WebContentsView;
 };
 
@@ -30,6 +34,9 @@ type CreateTabOptions = {
   url?: string;
   profileId?: string;
   openedByAgent?: boolean;
+  /** 화면을 이 탭으로 옮길지. 사용자가 "열어줘" 라고 시킨 경우에만 true 다. */
+  focus?: boolean;
+  openerId?: number;
 };
 
 type TabManagerOptions = {
@@ -119,17 +126,29 @@ export const createTabManager = ({
     emit();
   };
 
-  const createTab = ({ url, profileId = 'default', openedByAgent = false }: CreateTabOptions = {}) => {
+  const createTab = ({
+    url,
+    profileId = 'default',
+    openedByAgent = false,
+    focus = false,
+    openerId,
+  }: CreateTabOptions = {}) => {
     const view = new WebContentsView({
       webPreferences: {
         partition: partitionOf(profileId),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        /*
+         * 에이전트 탭은 화면을 뺏지 않으므로 작업 내내 setVisible(false) 상태로 돈다.
+         * 기본값(true)이면 숨은 렌더러의 타이머와 rAF 가 눌리는데, playwright 의 대기와
+         * actionability 판정이 rAF 폴링이라 로그인·발행·삭제가 타임아웃까지 매달릴 수 있다.
+         */
+        backgroundThrottling: false,
       },
     });
 
-    const tab: Tab = { id: nextId, profileId, openedByAgent, view };
+    const tab: Tab = { id: nextId, profileId, openedByAgent, openerId, view };
     nextId += 1;
     tabs.push(tab);
 
@@ -149,14 +168,20 @@ export const createTabManager = ({
     webContents.on('did-stop-loading', emit);
     webContents.on('page-title-updated', emit);
     webContents.setWindowOpenHandler(({ url: openedUrl }) => {
-      createTab({ url: openedUrl, profileId, openedByAgent });
+      createTab({ url: openedUrl, profileId, openedByAgent, openerId: tab.id });
       return { action: 'deny' };
     });
 
     window.contentView.addChildView(view);
     void webContents.loadURL(normalizeUrl(url ?? HOME_URL));
 
-    selectTab(tab.id);
+    if (shouldFocusNewTab({ openedByAgent, focus, hasActive: findTab(activeId ?? -1) !== undefined })) {
+      selectTab(tab.id);
+    } else {
+      // 화면은 그대로 두더라도 사이드바에는 새 탭이 보여야 한다.
+      layout();
+      emit();
+    }
 
     return tab.id;
   };
@@ -170,6 +195,10 @@ export const createTabManager = ({
 
     window.contentView.removeChildView(removed.view);
     removed.view.webContents.close();
+
+    // 에이전트 탭이 띄운 팝업은 아무도 닫지 않아 실행마다 쌓인다. 부모와 함께 걷어낸다.
+    // 사용자가 연 탭에는 적용하지 않는다. 보고 있던 창이 같이 사라지면 안 된다.
+    if (removed.openedByAgent) descendantTabIds(tabs, id).forEach(closeTab);
 
     if (activeId === id) {
       const fallback = tabs[index] ?? tabs[index - 1];

@@ -5,6 +5,9 @@ import { isServiceUrl, normalizeServiceUrl } from './url';
 /**
  * 설정 패널의 서비스 주소 칸에서 DOM 을 뺀 부분.
  * 패널 스크립트는 렌더러 IIFE 라 테스트에서 불러올 수 없어서, 판단하는 로직만 여기로 뺀다.
+ *
+ * 설정 화면에서 주소 칸 자체는 내렸다(그냥 탭으로 여는 화면이라 배포 주소 기본값으로 충분하다).
+ * setServiceUrls IPC 와 저장 경로는 그대로 남아 있어서 collectServiceUrls 도 그 계약으로 남긴다.
  */
 
 export type ServiceUrlDraft = { key: string; name: string; raw: string };
@@ -38,9 +41,13 @@ export const collectServiceUrls = (drafts: ServiceUrlDraft[]): ServiceUrlCollect
   return { next, normalized, invalid };
 };
 
-/** 주소를 안 넣은 서비스는 빼둔다. 칩을 눌렀는데 example.com 이 열리면 그건 버그로 보인다. */
+/**
+ * 주소가 없는 서비스는 빼둔다. 칩을 눌렀는데 빈 주소가 열리면 그건 버그로 보인다.
+ * 판정 기준은 '사용자가 덮어썼는가' 가 아니라 '열 주소가 있는가' 다. 주소 칸을 내린 뒤로는
+ * 아무도 덮어쓰지 않으므로 custom 으로 거르면 칩이 영영 안 뜬다.
+ */
 export const cookieLoginServices = (catalog: ServiceCatalogItemView[]) =>
-  catalog.filter(({ auth, kind, custom }) => auth === 'cookie' && kind === 'ui' && custom);
+  catalog.filter(({ auth, kind, url }) => auth === 'cookie' && kind === 'ui' && Boolean(url));
 
 export type ConnectionState = { key: string; label: string; ok: boolean };
 
@@ -53,6 +60,6 @@ export const connectionStates = (
   services: ServiceCatalogItemView[],
   exposureBotDir: string,
 ): ConnectionState[] => [
-  ...services.map(({ key, name, custom }) => ({ key, label: name, ok: custom })),
+  ...services.map(({ key, name, url }) => ({ key, label: name, ok: Boolean(url) })),
   { key: 'exposure-bot-dir', label: SERVICE_LABELS.exposure, ok: Boolean(exposureBotDir.trim()) },
 ];

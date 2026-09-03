@@ -51,16 +51,6 @@
         </div>
 
         <div class="field">
-          <span id="lbl-services"></span>
-          <div id="service-urls"></div>
-          <div class="row">
-            <button id="save-service-urls" class="primary"></button>
-          </div>
-          <small id="service-url-status" class="hint"></small>
-          <small id="service-url-hint" class="hint"></small>
-        </div>
-
-        <div class="field">
           <span id="lbl-scheduler"></span>
           <div class="row">
             <input id="sch-user" type="text" data-ph="serviceUserPlaceholder" autocomplete="off" />
@@ -101,7 +91,9 @@
           <div class="chips">
             <button id="chip-model" type="button" class="chip" title=""></button>
             <button id="chip-services" type="button" class="chip chip-status" title=""></button>
+            <span id="chip-usage" class="chip" title="" hidden></span>
           </div>
+          <button id="stop" type="button" class="send stop" hidden></button>
           <button id="send" type="submit" class="send"></button>
         </div>
       </form>

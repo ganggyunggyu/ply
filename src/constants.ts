@@ -17,6 +17,12 @@ export const PANEL_WIDTH = 396;
 export const QUESTION_FORM_CANCEL = '__cancelled__';
 
 /**
+ * 패널의 답을 기다리는 상한. 질문 카드와 다붓 로그인 카드가 같은 값을 쓴다.
+ * 이 시간이 지나면 대기가 거절되고 실행 슬롯이 풀린다.
+ */
+export const PENDING_ANSWER_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
  * 폼 칸에 허용하는 입력 방식. password 는 일부러 뺐다.
  * 폼 답은 answerAgent 를 타고 모델에게 그대로 간다. 비밀번호는 dabut_login 경로로만 흐른다.
  */

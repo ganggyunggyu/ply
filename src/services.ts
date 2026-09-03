@@ -82,7 +82,7 @@ const DEFAULT_SERVICE_URLS: Readonly<Record<string, string>> = Object.freeze(
 export const SERVICE_KEYS: readonly string[] = SERVICE_CATALOG.map(({ key }) => key);
 
 /**
- * 사용자가 실제로 주소를 넣은 key. applyServiceUrls 가 갱신한다.
+ * 지금 열 수 있는 주소가 있는 key. applyServiceUrls 가 갱신한다.
  * 한 번도 안 불렀으면 비어 있다 = 전부 미설정. 안전한 쪽으로 틀린다.
  */
 const configuredKeys = new Set<string>();
@@ -139,15 +139,19 @@ export const catalogSummary = () =>
     .join('\n');
 
 /**
- * key -> url. 사용자의 실제 배포 주소를 코드가 아니라 설정에서 받는다.
- * 조건 없이 항상 대입한다. 빈 오버라이드로 부르면 전부 코드 기본값으로 되돌아가고
- * 설정된 항목도 전부 사라진다.
+ * key -> url. 조건 없이 항상 대입한다. 빈 오버라이드로 부르면 전부 코드 기본값으로 되돌아간다.
+ *
+ * '설정됨' 의 기준은 오버라이드 유무가 아니라 주소가 있느냐다.
+ * 설정 화면에서 서비스 주소 칸을 뺐기 때문에(그냥 탭으로 여는 화면이라 사용자가 바꿀 일이 없다)
+ * 오버라이드로 판정하면 새 컴퓨터에서는 아무도 주소를 넣을 수 없어 open_service 가 영영 안 열린다.
+ * 배포 주소가 코드 기본값이므로 설치만 하면 바로 열려야 한다.
+ * 저장 기구(setServiceUrls)는 그대로 남아 있어서 settings.json 을 손보면 여전히 덮어쓸 수 있다.
  */
 export const applyServiceUrls = (overrides: Record<string, string>) => {
   configuredKeys.clear();
 
   SERVICE_CATALOG.forEach((service) => {
-    if (overrideOf(service.key, overrides)) configuredKeys.add(service.key);
     service.url = resolveUrl(service.key, overrides);
+    if (service.url) configuredKeys.add(service.key);
   });
 };

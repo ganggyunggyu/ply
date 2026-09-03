@@ -1,6 +1,6 @@
 {
   "name": "gng-browser",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Custom Electron browser with a built-in Naver automation agent, attachable over CDP",
   "license": "MIT",
