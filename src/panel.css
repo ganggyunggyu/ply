@@ -780,6 +780,14 @@ button.chip:hover {
   line-height: 1.55;
 }
 
+.card-note {
+  padding: 0 14px 12px;
+  margin-top: -4px;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .card-form {
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);

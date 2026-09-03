@@ -1,3 +1,5 @@
+export const APP_NAME = 'Ply';
+
 export const WINDOW_WIDTH = 1440;
 export const WINDOW_HEIGHT = 920;
 export const WINDOW_MIN_WIDTH = 900;
@@ -10,6 +12,15 @@ export const HOME_URL = 'https://www.google.com';
 export const SEARCH_URL = 'https://www.google.com/search?q=';
 
 export const DEFAULT_CDP_PORT = 18830;
+
+/**
+ * 노출지기 대시보드 주소. 리터럴은 여기 하나뿐이다.
+ *
+ * 같은 주소가 두 군데서 쓰인다. services.ts 의 카탈로그(탭으로 여는 화면)와
+ * hub.ts 의 ServiceEndpoints(도구가 부르는 API). 둘이 어긋나면 사용자가 보는 화면과
+ * 도구가 고치는 대상이 다른 서버가 된다. 그래서 양쪽이 이 상수 하나를 본다.
+ */
+export const EXPOSURE_DASHBOARD_URL = 'https://blog-cron-bot-production.up.railway.app';
 
 export const PANEL_WIDTH = 396;
 

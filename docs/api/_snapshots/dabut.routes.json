@@ -1,0 +1,419 @@
+{
+  "source": "https://blog-analyzer.fly.dev/openapi.json",
+  "generatedAt": "2026-09-03T09:32:27.919Z",
+  "routes": {
+    "/analysis/sub-title": [
+      "POST"
+    ],
+    "/analysis/upload-text": [
+      "POST"
+    ],
+    "/api/analysis/all": [
+      "POST"
+    ],
+    "/api/analysis/expression": [
+      "POST"
+    ],
+    "/api/analysis/parameter": [
+      "POST"
+    ],
+    "/api/analysis/subtitle": [
+      "POST"
+    ],
+    "/api/analysis/template": [
+      "POST"
+    ],
+    "/api/analysis/txt-all": [
+      "POST"
+    ],
+    "/auth/app/api-keys": [
+      "GET",
+      "PUT"
+    ],
+    "/auth/app/api-keys/{provider}": [
+      "DELETE"
+    ],
+    "/auth/app/api-keys/{provider}/test": [
+      "POST"
+    ],
+    "/auth/app/change-password": [
+      "POST"
+    ],
+    "/auth/app/login": [
+      "POST"
+    ],
+    "/auth/app/me": [
+      "GET"
+    ],
+    "/auth/app/signup": [
+      "POST"
+    ],
+    "/auth/app/users": [
+      "POST"
+    ],
+    "/auth/naver/health": [
+      "GET"
+    ],
+    "/auth/naver/login": [
+      "POST"
+    ],
+    "/auth/naver/logout": [
+      "POST"
+    ],
+    "/auth/naver/status": [
+      "GET"
+    ],
+    "/blog/health": [
+      "GET"
+    ],
+    "/blog/write": [
+      "POST"
+    ],
+    "/bot/auto": [
+      "POST"
+    ],
+    "/bot/auto-schedule": [
+      "POST"
+    ],
+    "/bot/batch-id": [
+      "GET"
+    ],
+    "/bot/health": [
+      "GET"
+    ],
+    "/bot/manuscript/{manuscript_id}": [
+      "DELETE",
+      "GET"
+    ],
+    "/bot/pending": [
+      "DELETE",
+      "GET"
+    ],
+    "/bot/pending/{manuscript_id}": [
+      "DELETE"
+    ],
+    "/bot/prepare": [
+      "POST"
+    ],
+    "/bot/publish": [
+      "POST"
+    ],
+    "/bot/queue": [
+      "GET"
+    ],
+    "/bot/queue/{queue_id}": [
+      "DELETE",
+      "GET"
+    ],
+    "/bot/queue/create": [
+      "POST"
+    ],
+    "/bot/queue/create-all": [
+      "POST"
+    ],
+    "/bot/queue/start": [
+      "POST"
+    ],
+    "/bot/queues": [
+      "GET"
+    ],
+    "/bot/retry/{manuscript_id}": [
+      "POST"
+    ],
+    "/bot/start": [
+      "POST"
+    ],
+    "/bot/upload": [
+      "POST"
+    ],
+    "/bot/upload-schedule": [
+      "POST"
+    ],
+    "/category/{keyword}": [
+      "GET"
+    ],
+    "/generate/alibaba": [
+      "POST"
+    ],
+    "/generate/batch": [
+      "POST"
+    ],
+    "/generate/blog-filler": [
+      "POST"
+    ],
+    "/generate/blog-filler-pet": [
+      "POST"
+    ],
+    "/generate/blog-filler-restaurant": [
+      "POST"
+    ],
+    "/generate/cafe-total": [
+      "POST"
+    ],
+    "/generate/chatgpt4o": [
+      "POST"
+    ],
+    "/generate/claude": [
+      "POST"
+    ],
+    "/generate/clean-claude": [
+      "POST"
+    ],
+    "/generate/clean-deepseek": [
+      "POST"
+    ],
+    "/generate/comment": [
+      "POST"
+    ],
+    "/generate/decorate": [
+      "POST"
+    ],
+    "/generate/deepseek": [
+      "POST"
+    ],
+    "/generate/deepseek-new": [
+      "POST"
+    ],
+    "/generate/gemini-3-flash": [
+      "POST"
+    ],
+    "/generate/gemini-3-flash-clean": [
+      "POST"
+    ],
+    "/generate/gemini-3-pro": [
+      "POST"
+    ],
+    "/generate/gemini-cafe": [
+      "POST"
+    ],
+    "/generate/gemini-cafe-daily": [
+      "POST"
+    ],
+    "/generate/gemini-cafe-daily/personas": [
+      "GET"
+    ],
+    "/generate/gemini-ceo": [
+      "POST"
+    ],
+    "/generate/gemini-new": [
+      "POST"
+    ],
+    "/generate/ghost-story": [
+      "POST"
+    ],
+    "/generate/gpt-5-2": [
+      "POST"
+    ],
+    "/generate/gpt-ceo": [
+      "POST"
+    ],
+    "/generate/gpt-ver3-clean": [
+      "POST"
+    ],
+    "/generate/gpt-with-image": [
+      "POST"
+    ],
+    "/generate/gpt4o": [
+      "POST"
+    ],
+    "/generate/grok": [
+      "POST"
+    ],
+    "/generate/grok-hanryeo": [
+      "POST"
+    ],
+    "/generate/grok-new": [
+      "POST"
+    ],
+    "/generate/grok-ver3-clean": [
+      "POST"
+    ],
+    "/generate/hanryeo": [
+      "POST"
+    ],
+    "/generate/hanryeo-skill": [
+      "POST"
+    ],
+    "/generate/image": [
+      "POST"
+    ],
+    "/generate/image-batch": [
+      "POST"
+    ],
+    "/generate/image-batch/{job_id}": [
+      "DELETE",
+      "GET"
+    ],
+    "/generate/image-batch/{job_id}/download": [
+      "GET"
+    ],
+    "/generate/image-models": [
+      "GET"
+    ],
+    "/generate/keigo": [
+      "POST"
+    ],
+    "/generate/kimdongpal": [
+      "POST"
+    ],
+    "/generate/nyangnyang": [
+      "POST"
+    ],
+    "/generate/openai-new": [
+      "POST"
+    ],
+    "/generate/project": [
+      "POST"
+    ],
+    "/generate/recomment": [
+      "POST"
+    ],
+    "/generate/restaurant-gemini": [
+      "POST"
+    ],
+    "/generate/restaurant/v1": [
+      "POST"
+    ],
+    "/generate/restaurant/v2": [
+      "POST"
+    ],
+    "/generate/solar": [
+      "POST"
+    ],
+    "/generate/solar-ver3-clean": [
+      "POST"
+    ],
+    "/generate/stream": [
+      "POST"
+    ],
+    "/generate/test": [
+      "POST"
+    ],
+    "/generate/test/cafe-daily": [
+      "POST"
+    ],
+    "/generate/test/comment": [
+      "POST"
+    ],
+    "/generate/test/recomment": [
+      "POST"
+    ],
+    "/generate/tete": [
+      "POST"
+    ],
+    "/generate/update-restaurant": [
+      "POST"
+    ],
+    "/generate/x-illustrator": [
+      "POST"
+    ],
+    "/generate/x-illustrator/nyangnyang": [
+      "POST"
+    ],
+    "/keyword-generator": [
+      "POST"
+    ],
+    "/manuscript/ingest": [
+      "POST"
+    ],
+    "/manuscript/toggle-visibility": [
+      "POST"
+    ],
+    "/manuscript/visibility/{category}/{manuscript_id}": [
+      "GET"
+    ],
+    "/naver-accounts": [
+      "GET",
+      "POST"
+    ],
+    "/naver-accounts/{account_id}": [
+      "DELETE",
+      "GET",
+      "PUT"
+    ],
+    "/naver-accounts/categories": [
+      "GET"
+    ],
+    "/naver-accounts/import": [
+      "POST"
+    ],
+    "/projects": [
+      "GET",
+      "POST"
+    ],
+    "/projects/{project_id}": [
+      "DELETE",
+      "GET",
+      "PUT"
+    ],
+    "/projects/{project_id}/duplicate": [
+      "POST"
+    ],
+    "/projects/categories": [
+      "GET"
+    ],
+    "/projects/models": [
+      "GET"
+    ],
+    "/projects/presets": [
+      "GET"
+    ],
+    "/projects/reorder": [
+      "PUT"
+    ],
+    "/projects/steps": [
+      "GET"
+    ],
+    "/ref": [
+      "GET"
+    ],
+    "/ref/{keyword}": [
+      "GET"
+    ],
+    "/search/all": [
+      "POST"
+    ],
+    "/search/autocomplete": [
+      "GET"
+    ],
+    "/search/bookmarks": [
+      "DELETE",
+      "GET",
+      "POST"
+    ],
+    "/search/bookmarks/{bookmark_id}": [
+      "DELETE"
+    ],
+    "/search/bookmarks/check": [
+      "GET"
+    ],
+    "/search/history": [
+      "DELETE",
+      "GET",
+      "POST"
+    ],
+    "/search/keyword": [
+      "POST"
+    ],
+    "/search/manuscript/{manuscript_id}": [
+      "DELETE",
+      "GET",
+      "PATCH"
+    ],
+    "/search/manuscript/{manuscript_id}/visibility": [
+      "PATCH"
+    ],
+    "/search/manuscripts/visible": [
+      "GET"
+    ],
+    "/search/popular": [
+      "GET"
+    ],
+    "/search/stats": [
+      "GET"
+    ],
+    "/test/test": [
+      "GET"
+    ]
+  }
+}

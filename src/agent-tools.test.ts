@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import type { AxiosInstance } from 'axios';
 import type { AccountStore } from './accounts';
-import type { QuestionField } from './bridge';
+import { REDACTED } from './api-access';
+import type { AccountCardRequest, QuestionField } from './bridge';
 import { toKstDate } from './clock';
 import { QUESTION_FORM_CANCEL } from './constants';
 import { CONFIRM, ERRORS } from './messages';
@@ -16,7 +20,7 @@ import {
   SCHEDULE_STATUSES,
 } from './scheduler-enums';
 import type { ToolSpec } from './openrouter';
-import { TOOL_RESULTS as RESULT } from './prompts';
+import { RESULT_PRESET, TOOL_RESULTS as RESULT } from './prompts';
 import { applyServiceUrls } from './services';
 import type { TabManager } from './tabs';
 import type { ScheduleJobDetail, ScheduleSummary } from './hub';
@@ -24,6 +28,13 @@ import { formatToolOutput } from './tool-output';
 import {
   buildAgentSystemPrompt,
   buildAutoScheduleInput,
+  describeDabutSync,
+  isAccountRemoveApproved,
+  isExposureRunApproved,
+  isPresetSaveApproved,
+  parseCardOutcome,
+  requestAccountRemoveApproval,
+  requestExposureRunApproval,
   stoppedDeleteRows,
   clampListLimit,
   countPublishedJobs,
@@ -370,6 +381,9 @@ const createStubContext = (
     closedTabIds: [] as number[],
     selectedTabIds: [] as number[],
     formCalls: [] as { question: string; fields: QuestionField[] }[],
+    accountCardCalls: [] as Omit<AccountCardRequest, 'id'>[],
+    removedAccountIds: [] as string[],
+    exposureCookieCleared: 0,
   };
 
   const findAccount = (id: string) => (id === STUB_ACCOUNT.id ? STUB_ACCOUNT : undefined);
@@ -405,18 +419,39 @@ const createStubContext = (
   };
 
   const context: ToolContext = {
-    accountStore: { list: () => [STUB_ACCOUNT], find: findAccount } as unknown as AccountStore,
+    accountStore: {
+      list: () => [STUB_ACCOUNT],
+      find: findAccount,
+      remove: (id: string) => {
+        spy.removedAccountIds.push(id);
+        return [];
+      },
+    } as unknown as AccountStore,
     tabManager: { createTab, closeTab, selectTab } as unknown as TabManager,
     cdpPort: 0,
     client: {} as AxiosInstance,
     writerModel: 'test/writer',
-    getEndpoints: () => ({ dabutBaseUrl: '', schedulerBaseUrl: '', exposureBotDir: '' }),
+    getEndpoints: () => ({
+      dabutBaseUrl: '',
+      schedulerBaseUrl: '',
+      exposureBotDir: '',
+      exposureDashboardUrl: '',
+    }),
     getSchedulerToken: () => schedulerToken,
     getCookieNames: async () => cookieNames,
     onProgress: () => undefined,
     askUser,
     askUserForm,
     requestDabutLogin: async () => '',
+    requestAccountCard: async (request) => {
+      spy.accountCardCalls.push(request);
+      return '{}';
+    },
+    requestExposureLogin: async () => '{}',
+    getExposureCookie: () => undefined,
+    clearExposureCookie: () => {
+      spy.exposureCookieCleared += 1;
+    },
   };
 
   return { context, spy };
@@ -1876,7 +1911,12 @@ const schedulerContext = (baseUrl: string, answer: () => Promise<string>) => {
     spy,
     context: {
       ...context,
-      getEndpoints: () => ({ dabutBaseUrl: baseUrl, schedulerBaseUrl: baseUrl, exposureBotDir: '' }),
+      getEndpoints: () => ({
+        dabutBaseUrl: baseUrl,
+        schedulerBaseUrl: baseUrl,
+        exposureBotDir: '',
+        exposureDashboardUrl: baseUrl,
+      }),
     } as ToolContext,
   };
 };
@@ -2056,4 +2096,809 @@ test('job 상태는 하나도 빠짐없이 멈출 수 있음/없음으로 갈린
     const isStoppable = STOPPABLE_JOB_STATUSES.includes(status);
     assert.equal(isStoppable !== terminal.includes(status), true, status);
   });
+});
+
+// ---------- 계정 관리 ----------
+
+test('승인 토큰 다섯이 서로 겹치지 않는다', () => {
+  // 겹치면 한쪽 승인이 다른 쪽으로 샌다. 글 삭제 승인이 계정 삭제가 되는 식이다.
+  const tokens = [
+    CONFIRM.deleteYes,
+    CONFIRM.cancelScheduleYes,
+    CONFIRM.accountRemoveYes,
+    CONFIRM.exposureRunYes,
+    CONFIRM.presetSaveYes,
+  ];
+
+  assert.equal(new Set(tokens).size, tokens.length);
+  assert.equal(isAccountRemoveApproved(CONFIRM.deleteYes), false);
+  assert.equal(isExposureRunApproved(CONFIRM.cancelScheduleYes), false);
+  assert.equal(isPresetSaveApproved(CONFIRM.accountRemoveYes), false);
+  assert.equal(isAccountRemoveApproved(` ${CONFIRM.accountRemoveYes} `), true);
+});
+
+test('manage_naver_account 스키마에 password 가 없다', () => {
+  // 인자에 실으면 tool_start 이벤트와 OpenRouter 요청 본문에 평문이 그대로 남는다.
+  const tools = createNaverTools(createStubContext().context);
+  const schema = findTool(tools, 'manage_naver_account').parameters as {
+    properties: Record<string, unknown>;
+    additionalProperties: boolean;
+  };
+
+  assert.equal(Object.hasOwn(schema.properties, 'password'), false);
+  assert.equal(schema.additionalProperties, false);
+});
+
+test('목록을 안 읽었으면 계정을 못 고친다', async () => {
+  const { context, spy } = createStubContext();
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'manage_naver_account').run({
+    action: 'change_password',
+    accountId: STUB_ACCOUNT.id,
+  });
+
+  assert.equal(output, RESULT.accountNotListed(STUB_ACCOUNT.id));
+  assert.equal(spy.accountCardCalls.length, 0);
+});
+
+test('목록을 읽은 뒤에는 카드를 띄운다', async () => {
+  const { context, spy } = createStubContext();
+  context.requestAccountCard = async (request) => {
+    spy.accountCardCalls.push(request);
+
+    return JSON.stringify({
+      status: 'account_password',
+      id: STUB_ACCOUNT.id,
+      label: STUB_ACCOUNT.label,
+      local: true,
+      dabut: 'changed',
+      dabutDetail: '메인 블로그',
+    });
+  };
+
+  const tools = createNaverTools(context);
+  await findTool(tools, 'list_accounts').run({});
+
+  const output = await findTool(tools, 'manage_naver_account').run({
+    action: 'change_password',
+    accountId: STUB_ACCOUNT.id,
+  });
+
+  assert.equal(spy.accountCardCalls.length, 1);
+  assert.equal(spy.accountCardCalls[0]?.mode, 'change_password');
+  // 두 곳을 반드시 따로 적는다. 한 줄로 뭉치면 모델이 "다 바꿨어요" 라고 보고한다.
+  assert.equal(output.includes(RESULT.accountLocalChanged), true);
+  assert.equal(output.includes(RESULT.accountDabutChanged('메인 블로그')), true);
+});
+
+test('다붓 반영 실패를 로컬 성공에 묻지 않는다', async () => {
+  const { context } = createStubContext();
+  context.requestAccountCard = async () =>
+    JSON.stringify({
+      status: 'account_password',
+      id: STUB_ACCOUNT.id,
+      label: STUB_ACCOUNT.label,
+      local: true,
+      dabut: 'no_match',
+      dabutDetail: '',
+    });
+
+  const tools = createNaverTools(context);
+  await findTool(tools, 'list_accounts').run({});
+
+  const output = await findTool(tools, 'manage_naver_account').run({
+    action: 'change_password',
+    accountId: STUB_ACCOUNT.id,
+  });
+
+  assert.equal(output.includes(RESULT.accountDabutNoMatch), true);
+});
+
+test('비밀번호 카드를 되돌려보내면 같은 계정에 다시 띄우지 않는다', async () => {
+  // 거절이 끈적하지 않으면 모델이 max_iterations 까지 비밀번호 칸을 다시 띄울 수 있다.
+  // 앱 크롬 안에서 뜨는 정품 카드라 사용자는 몇 번째인지 말고는 구분할 근거가 없다.
+  const { context, spy } = createStubContext();
+  context.requestAccountCard = async (request) => {
+    spy.accountCardCalls.push(request);
+
+    return JSON.stringify({ status: 'cancelled' });
+  };
+
+  const tools = createNaverTools(context);
+  await findTool(tools, 'list_accounts').run({});
+  const manage = findTool(tools, 'manage_naver_account');
+
+  const first = await manage.run({ action: 'change_password', accountId: STUB_ACCOUNT.id });
+  const second = await manage.run({ action: 'change_password', accountId: STUB_ACCOUNT.id });
+
+  assert.equal(first, RESULT.accountCardCancelled);
+  assert.equal(second, RESULT.accountAlreadyAttempted(STUB_ACCOUNT.id));
+  assert.equal(spy.accountCardCalls.length, 1);
+});
+
+test('비밀번호 카드에 답이 없어도 다시 띄우지 않는다', async () => {
+  const { context, spy } = createStubContext();
+  context.requestAccountCard = async (request) => {
+    spy.accountCardCalls.push(request);
+
+    return '';
+  };
+
+  const tools = createNaverTools(context);
+  await findTool(tools, 'list_accounts').run({});
+  const manage = findTool(tools, 'manage_naver_account');
+
+  await manage.run({ action: 'change_password', accountId: STUB_ACCOUNT.id });
+  const second = await manage.run({ action: 'change_password', accountId: STUB_ACCOUNT.id });
+
+  assert.equal(second, RESULT.accountAlreadyAttempted(STUB_ACCOUNT.id));
+  assert.equal(spy.accountCardCalls.length, 1);
+});
+
+test('계정 추가 카드를 닫으면 이번 실행에서는 다시 안 띄운다', async () => {
+  // add 에는 accountId 가 없어 touchedAccountIds 가 못 잡는다. 따로 막는다.
+  const { context, spy } = createStubContext();
+  context.requestAccountCard = async (request) => {
+    spy.accountCardCalls.push(request);
+
+    return JSON.stringify({ status: 'cancelled' });
+  };
+
+  const tools = createNaverTools(context);
+  const manage = findTool(tools, 'manage_naver_account');
+
+  const first = await manage.run({ action: 'add', naverId: 'someone' });
+  const second = await manage.run({ action: 'add', naverId: 'someone' });
+
+  assert.equal(first, RESULT.accountCardCancelled);
+  assert.equal(second, RESULT.accountCardAlreadyDeclined);
+  assert.equal(spy.accountCardCalls.length, 1);
+});
+
+test('노출지기 로그인 카드를 건너뛰면 다시 안 띄운다', async () => {
+  const { context } = createStubContext();
+  let cards = 0;
+  context.requestExposureLogin = async () => {
+    cards += 1;
+
+    return JSON.stringify({ status: 'cancelled' });
+  };
+
+  const tools = createNaverTools(context);
+  const login = findTool(tools, 'exposure_login');
+
+  const first = await login.run({});
+  const second = await login.run({});
+
+  assert.equal(first, RESULT.exposureLoginSkipped);
+  assert.equal(second, RESULT.exposureLoginAlreadyDeclined);
+  assert.equal(cards, 1);
+});
+
+test('다붓 반영 상태마다 다른 문장을 낸다', () => {
+  assert.equal(describeDabutSync('changed', '이름'), RESULT.accountDabutChanged('이름'));
+  assert.equal(describeDabutSync('no_match', ''), RESULT.accountDabutNoMatch);
+  assert.equal(describeDabutSync('no_login', ''), RESULT.accountDabutNoLogin);
+  assert.equal(describeDabutSync('failed', '502'), RESULT.accountDabutFailed('502'));
+});
+
+test('카드를 닫으면 아무것도 안 바뀐 것으로 본다', () => {
+  assert.deepEqual(parseCardOutcome('{}'), { status: 'cancelled' });
+  assert.deepEqual(parseCardOutcome('not json'), { status: 'cancelled' });
+  assert.deepEqual(parseCardOutcome('[1,2]'), { status: 'cancelled' });
+  assert.deepEqual(parseCardOutcome('{"status":"exposure_login","name":"a"}'), {
+    status: 'exposure_login',
+    name: 'a',
+  });
+});
+
+test('계정 삭제는 확인을 받아야 지운다', async () => {
+  const { context, spy } = createStubContext(['NID_AUT', 'NID_SES'], async () => '아니요');
+  const tools = createNaverTools(context);
+  await findTool(tools, 'list_accounts').run({});
+
+  const output = await findTool(tools, 'manage_naver_account').run({
+    action: 'remove',
+    accountId: STUB_ACCOUNT.id,
+  });
+
+  assert.equal(output, RESULT.accountRemoveNotApproved('아니요'));
+  assert.deepEqual(spy.removedAccountIds, []);
+});
+
+test('계정 삭제 확인 문구에 남는 것과 사라지는 것을 둘 다 적는다', async () => {
+  const asked: string[] = [];
+
+  await requestAccountRemoveApproval({
+    askUser: async (question) => {
+      asked.push(question);
+      return CONFIRM.accountRemoveNo;
+    },
+    account: { id: 'acc-a', label: '메인', naverId: 'myblog01', hasPassword: true },
+  });
+
+  const [question] = asked;
+  assert.ok(question);
+  // "지웠으니 로그아웃됐겠지" 라는 틀린 안심을 주면 안 된다.
+  assert.equal(question.includes('비밀번호도 같이 사라져서'), true);
+  assert.equal(question.includes('쿠키는 남아요'), true);
+});
+
+test('승인하면 지우고 남는 것을 알린다', async () => {
+  const { context, spy } = createStubContext(['NID_AUT', 'NID_SES'], async () => CONFIRM.accountRemoveYes);
+  const tools = createNaverTools(context);
+  await findTool(tools, 'list_accounts').run({});
+
+  const output = await findTool(tools, 'manage_naver_account').run({
+    action: 'remove',
+    accountId: STUB_ACCOUNT.id,
+  });
+
+  assert.deepEqual(spy.removedAccountIds, [STUB_ACCOUNT.id]);
+  assert.equal(output, RESULT.accountRemoved(STUB_ACCOUNT.label, STUB_ACCOUNT.id));
+  assert.equal(output.includes('쿠키는 그대로'), true);
+});
+
+test('같은 계정에 두 번 손대지 않는다', async () => {
+  const { context } = createStubContext(['NID_AUT', 'NID_SES'], async () => CONFIRM.accountRemoveNo);
+  const tools = createNaverTools(context);
+  await findTool(tools, 'list_accounts').run({});
+
+  const first = await findTool(tools, 'manage_naver_account').run({
+    action: 'remove',
+    accountId: STUB_ACCOUNT.id,
+  });
+  const second = await findTool(tools, 'manage_naver_account').run({
+    action: 'remove',
+    accountId: STUB_ACCOUNT.id,
+  });
+
+  assert.equal(first, RESULT.accountRemoveNotApproved(CONFIRM.accountRemoveNo));
+  assert.equal(second, RESULT.accountAlreadyAttempted(STUB_ACCOUNT.id));
+});
+
+// ---------- 노출지기 ----------
+
+test('노출지기 로그인 전에는 프리셋을 못 고친다', async () => {
+  const { context } = createStubContext();
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'update_exposure_preset').run({
+    action: 'add_cafe_check',
+    label: 'x',
+  });
+
+  assert.equal(output, RESULT.exposureNotLoggedIn);
+});
+
+test('만료된 쿠키는 지우고 다시 로그인시킨다', async () => {
+  const { context, spy } = createStubContext();
+  // 발급 시각이 8일 전이면 서버에 묻지 않고도 죽은 줄 안다.
+  context.getExposureCookie = () => `${Date.now() - 8 * 24 * 60 * 60 * 1000}.m1.sig`;
+
+  const tools = createNaverTools(context);
+  const output = await findTool(tools, 'update_exposure_preset').run({ action: 'enable_target' });
+
+  assert.equal(output, RESULT.exposureSessionExpired);
+  assert.equal(spy.exposureCookieCleared, 1);
+});
+
+test('모르는 프리셋 동작은 네트워크를 타기 전에 막는다', async () => {
+  const { context } = createStubContext();
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'update_exposure_preset').run({ action: 'set_target_sheet' });
+
+  assert.equal(output, RESULT_PRESET.unknownPresetAction('set_target_sheet'));
+});
+
+test('update_exposure_preset 스키마에 set_target_sheet 가 없다', () => {
+  const tools = createNaverTools(createStubContext().context);
+  const schema = findTool(tools, 'update_exposure_preset').parameters as {
+    properties: { action: { enum: string[] } };
+  };
+
+  assert.equal(schema.properties.action.enum.includes('set_target_sheet'), false);
+  assert.equal(schema.properties.action.enum.includes('add_cafe_check'), true);
+});
+
+test('노출체크 실행은 확인 카드를 먼저 띄운다', async () => {
+  // "카페노출체크하고싶어" 사고는 프롬프트가 아니라 게이트가 없어서 났다.
+  const asked: string[] = [];
+
+  const { approved } = await requestExposureRunApproval({
+    askUser: async (question) => {
+      asked.push(question);
+      return CONFIRM.exposureRunNo;
+    },
+    label: '카페',
+  });
+
+  const [question] = asked;
+  assert.equal(approved, false);
+  assert.ok(question);
+  assert.equal(question.includes('수 분에서 수십 분'), true);
+  assert.equal(question.includes('새 체크를 만들려던 것이면'), true);
+});
+
+test('노출체크 실행 거절은 실패가 아니라고 알린다', async () => {
+  const { context } = createStubContext(['NID_AUT', 'NID_SES'], async () => CONFIRM.exposureRunNo);
+  context.getEndpoints = () => ({
+    dabutBaseUrl: '',
+    schedulerBaseUrl: '',
+    exposureBotDir: '/tmp/does-not-exist-gng',
+    exposureDashboardUrl: '',
+  });
+
+  const tools = createNaverTools(context);
+  const output = await findTool(tools, 'run_exposure_check').run({ job: 'cafe' });
+
+  // 저장소가 없으면 findExposureJob 이 먼저 걸러서 확인 카드까지 못 간다.
+  assert.equal(output, RESULT.unknownExposureJob);
+});
+
+test('빈 job 은 목록을 보라고 돌려준다', async () => {
+  const { context } = createStubContext();
+  const tools = createNaverTools(context);
+
+  assert.equal(await findTool(tools, 'run_exposure_check').run({ job: '  ' }), RESULT.unknownExposureJob);
+});
+
+// ---------- 읽기 도구 ----------
+
+test('허용목록 밖 경로는 네트워크를 타지 않는다', async () => {
+  const { context } = createStubContext(['NID_AUT', 'NID_SES'], undefined, undefined, 'token');
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'api_get').run({
+    service: 'dabut',
+    path: '/generate/project',
+  });
+
+  assert.equal(output, RESULT.apiGetPathNotAllowed('dabut', '/generate/project'));
+});
+
+test('쿼리를 경로에 붙이면 거부한다', async () => {
+  const { context } = createStubContext(['NID_AUT', 'NID_SES'], undefined, undefined, 'token');
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'api_get').run({
+    service: 'scheduler',
+    path: '/schedules?accountId=me',
+  });
+
+  assert.equal(output, RESULT.apiGetPathNotAllowed('scheduler', '/schedules?accountId=me'));
+});
+
+test('로그인 없이 읽으려 하면 무엇을 부를지 알려준다', async () => {
+  const { context } = createStubContext();
+  const tools = createNaverTools(context);
+
+  assert.equal(
+    await findTool(tools, 'api_get').run({ service: 'dabut', path: '/projects' }),
+    RESULT.apiGetNoAuth('dabut'),
+  );
+  assert.equal(
+    await findTool(tools, 'api_get').run({ service: 'exposure', path: '/api/preset' }),
+    RESULT.exposureNotLoggedIn,
+  );
+});
+
+test('api_get 은 헤더 파라미터를 받지 않는다', () => {
+  // 받게 두면 모델이 토큰을 인자에 쓰게 되고 그 인자는 대화 기록에 남는다.
+  const tools = createNaverTools(createStubContext().context);
+  const schema = findTool(tools, 'api_get').parameters as {
+    properties: Record<string, unknown>;
+    additionalProperties: boolean;
+  };
+
+  assert.deepEqual(Object.keys(schema.properties).sort(), ['path', 'query', 'service']);
+  assert.equal(schema.additionalProperties, false);
+});
+
+test('read_api_doc 은 목차와 limits 를 준다', async () => {
+  const tools = createNaverTools(createStubContext().context);
+
+  const index = await findTool(tools, 'read_api_doc').run({});
+  assert.equal(index.includes('limits'), true);
+
+  const limits = await findTool(tools, 'read_api_doc').run({ topic: 'limits' });
+  assert.equal(limits.includes('EXPOSURE_TARGET_IDS'), true);
+  assert.equal(limits.includes('카페 노출체크'), true);
+});
+
+test('없는 주제를 지어내면 목록을 돌려준다', async () => {
+  const tools = createNaverTools(createStubContext().context);
+
+  const output = await findTool(tools, 'read_api_doc').run({ topic: 'billing' });
+
+  assert.equal(output.includes('accounts'), true);
+  assert.equal(output.includes('billing'), true);
+});
+
+test('도구 이름이 전부 다르고 새 다섯 개가 들어 있다', () => {
+  const names = createNaverTools(createStubContext().context).map(({ name }) => name);
+
+  assert.equal(new Set(names).size, names.length);
+  ['manage_naver_account', 'exposure_login', 'update_exposure_preset', 'read_api_doc', 'api_get'].forEach(
+    (name) => assert.equal(names.includes(name), true, name),
+  );
+});
+
+// ---------- 노출지기 왕복 ----------
+
+/**
+ * 노출지기 대시보드 흉내. 쿠키 세션이라 Cookie 헤더가 오는지도 같이 본다.
+ * 프리셋 PUT 이 전체 교체이므로 "보낸 몸통 전체" 를 그대로 붙잡아 둔다.
+ */
+const fakeExposure = async ({
+  preset = {
+    targets: [
+      { id: 'cafe', label: '카페 + 블로그', kind: 'basic', source: { sheetId: 's1', tabTitle: '카페' }, enabled: true },
+    ],
+    blogGroups: [{ id: 'group-1', label: '준최', blogIds: ['blog-a'] }],
+    doorayWebhookUrl: 'https://hook.dooray.com/old',
+  } as Record<string, unknown>,
+  jobs = [
+    { id: 'cafe-check:my-cafe', label: '내 카페', description: '설명', kind: 'cafe-check', isRunning: false, isBlocked: false },
+  ] as Record<string, unknown>[],
+  presetStatus = 200,
+  // 실제 노출지기는 저장 직전에 값을 정규화하고 못 쓰는 값을 조용히 버린다.
+  // 기본은 받은 그대로 저장하고, 그 갈림을 재현할 때만 갈아 끼운다.
+  normalize = (raw: Record<string, unknown>) => raw,
+}: {
+  preset?: Record<string, unknown>;
+  jobs?: Record<string, unknown>[];
+  presetStatus?: number;
+  normalize?: (raw: Record<string, unknown>) => Record<string, unknown>;
+} = {}) => {
+  const calls: { method: string; url: string; cookie: string; body: string }[] = [];
+  let stored = preset;
+
+  const handle = (req: IncomingMessage, res: ServerResponse) => {
+    const chunks: Buffer[] = [];
+
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      const url = req.url ?? '';
+      calls.push({
+        method: req.method ?? '',
+        url,
+        cookie: String(req.headers.cookie ?? ''),
+        body: Buffer.concat(chunks).toString(),
+      });
+
+      const send = (status: number, body: unknown) => {
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(body));
+      };
+
+      if (url === '/api/preset' && req.method === 'GET') {
+        return send(200, { member: { id: 'm1', loginId: 'me', displayName: '나' }, preset: stored });
+      }
+      if (url === '/api/preset' && req.method === 'PUT') {
+        if (presetStatus !== 200) {
+          return send(presetStatus, { error: '패키지: 읽기 시트 ID가 비어 있음' });
+        }
+
+        const sent = (JSON.parse(Buffer.concat(chunks).toString()) as { preset: Record<string, unknown> })
+          .preset;
+        stored = normalize(sent);
+
+        // 저장된 값을 되돌려준다. 보낸 값을 그대로 메아리치면 정규화로 갈리는 자리를 못 잡는다.
+        return send(200, { member: { id: 'm1' }, preset: stored });
+      }
+      if (url === '/api/jobs') return send(200, { jobs, bundles: [] });
+      if (url.endsWith('/run')) return send(200, { runId: 'run-9' });
+
+      return send(404, { error: 'not found' });
+    });
+  };
+
+  const server: Server = createServer(handle);
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    calls,
+    /** 승인 대기 중에 다른 곳에서 프리셋이 바뀌는 상황을 만든다. */
+    mutate: (change: (raw: Record<string, unknown>) => Record<string, unknown>) => {
+      stored = change(stored);
+    },
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  };
+};
+
+const exposureContext = (baseUrl: string, answer: () => Promise<string>) => {
+  const { context, spy } = createStubContext(['NID_AUT', 'NID_SES'], answer);
+
+  return {
+    spy,
+    context: {
+      ...context,
+      getEndpoints: () => ({
+        dabutBaseUrl: '',
+        schedulerBaseUrl: '',
+        exposureBotDir: '',
+        exposureDashboardUrl: baseUrl,
+      }),
+      getExposureCookie: () => `${Date.now()}.m1.sig`,
+    } as ToolContext,
+  };
+};
+
+test('프리셋 저장은 GET 으로 읽은 나머지를 통째로 다시 보낸다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.presetSaveYes);
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'update_exposure_preset').run({
+    action: 'add_cafe_check',
+    label: 'My Cafe',
+    sheetUrl: 'https://docs.google.com/spreadsheets/d/1AbC/edit',
+    tabTitle: '9월',
+    targets: ['https://cafe.naver.com/abc'],
+  });
+
+  const put = server.calls.find(({ method }) => method === 'PUT');
+  assert.ok(put);
+
+  const { preset } = JSON.parse(put.body) as { preset: Record<string, unknown> };
+
+  // 전체 교체라 여기서 하나라도 빠지면 사용자 설정이 조용히 사라진다.
+  assert.equal((preset.targets as unknown[]).length, 1);
+  assert.equal((preset.blogGroups as unknown[]).length, 1);
+  assert.equal(preset.doorayWebhookUrl, 'https://hook.dooray.com/old');
+  assert.equal((preset.cafeChecks as { id: string }[])[0]?.id, 'my-cafe');
+  assert.equal(put.cookie.includes('dashboard_session='), true);
+  assert.equal(output.includes('My Cafe'), true);
+});
+
+test('저장 결과는 서버가 실제로 저장한 값으로 보고한다', async (t) => {
+  // 노출지기는 저장 직전에 blogIds 를 정규화하고 못 쓰는 값을 버린다.
+  // 보내기 전 요약을 사실로 보고하면 "블로그 3개" 라고 말한 뒤 서버에는 1개만 남는다.
+  const server = await fakeExposure({
+    normalize: (raw) => ({
+      ...raw,
+      blogGroups: (raw.blogGroups as { id: string; label: string; blogIds: string[] }[]).map(
+        (group) => ({ ...group, blogIds: group.blogIds.slice(0, 1) }),
+      ),
+    }),
+  });
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.presetSaveYes);
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'update_exposure_preset').run({
+    action: 'add_blog_group',
+    label: '최블',
+    blogIds: ['airtrd', 'solantoro', 'tpeany'],
+  });
+
+  // 도구가 보낸 것은 3개인데 서버가 1개만 저장했다. 보고는 저장된 쪽을 따라야 한다.
+  assert.equal(output.includes('블로그 1개'), true);
+  assert.equal(output.includes('블로그 3개'), false);
+});
+
+test('저장했는데 되돌아온 값에 없으면 만들어졌다고 하지 않는다', async (t) => {
+  const server = await fakeExposure({ normalize: (raw) => ({ ...raw, cafeChecks: [] }) });
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.presetSaveYes);
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'update_exposure_preset').run({
+    action: 'add_cafe_check',
+    label: 'My Cafe',
+    sheetUrl: 'https://docs.google.com/spreadsheets/d/1AbC/edit',
+    tabTitle: '9월',
+    targets: ['https://cafe.naver.com/abc'],
+  });
+
+  assert.equal(output.includes(RESULT_PRESET.savedMissing('my-cafe')), true);
+});
+
+test('카드를 읽는 사이 프리셋이 바뀌면 덮어쓰지 않는다', async (t) => {
+  // PUT 은 전체 교체다. GET -> 승인 대기 -> PUT 사이에 대시보드에서 뭘 고치면 조용히 사라진다.
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => {
+    // 사용자가 카드를 읽는 동안 다른 곳에서 프리셋이 바뀌었다고 치자.
+    server.mutate((raw) => ({ ...raw, doorayWebhookUrl: 'https://hook.dooray.com/new' }));
+
+    return CONFIRM.presetSaveYes;
+  });
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'update_exposure_preset').run({
+    action: 'disable_target',
+    targetId: 'cafe',
+  });
+
+  assert.equal(output, RESULT.presetChangedWhileWaiting);
+  assert.equal(server.calls.some(({ method }) => method === 'PUT'), false);
+});
+
+test('api_get 은 두레이 웹훅 주소를 대화에 싣지 않는다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.presetSaveNo);
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'api_get').run({ service: 'exposure', path: '/api/preset' });
+
+  // 웹훅 인커밍 주소는 그 자체가 인증 토큰이다.
+  assert.equal(output.includes('hook.dooray.com'), false);
+  assert.equal(output.includes(REDACTED), true);
+  // 나머지는 그대로 읽혀야 targetId 를 고를 수 있다.
+  assert.equal(output.includes('"id":"cafe"'), true);
+});
+
+test('승인하지 않으면 PUT 을 아예 보내지 않는다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.presetSaveNo);
+  const tools = createNaverTools(context);
+
+  const output = await findTool(tools, 'update_exposure_preset').run({
+    action: 'disable_target',
+    targetId: 'cafe',
+  });
+
+  assert.equal(output, RESULT.presetNotApproved(CONFIRM.presetSaveNo));
+  assert.equal(server.calls.some(({ method }) => method === 'PUT'), false);
+});
+
+test('확인 카드가 손대지 않는 항목 수를 같이 보여준다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const asked: string[] = [];
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.presetSaveNo);
+  context.askUser = async (question) => {
+    asked.push(question);
+    return CONFIRM.presetSaveNo;
+  };
+
+  await findTool(createNaverTools(context), 'update_exposure_preset').run({
+    action: 'disable_target',
+    targetId: 'cafe',
+  });
+
+  const [question] = asked;
+  assert.ok(question);
+  assert.equal(question.includes('통째로 저장'), true);
+});
+
+test('400 의 한국어 문구를 고치지 말라고 붙여서 넘긴다', async (t) => {
+  const server = await fakeExposure({ presetStatus: 400 });
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.presetSaveYes);
+  const output = await findTool(createNaverTools(context), 'update_exposure_preset').run({
+    action: 'disable_target',
+    targetId: 'cafe',
+  });
+
+  assert.equal(output, RESULT.presetRejected('패키지: 읽기 시트 ID가 비어 있음'));
+});
+
+test('로그인돼 있으면 서버 목록을 쓰고 카페체크도 나온다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.exposureRunYes);
+  const output = await findTool(createNaverTools(context), 'list_exposure_jobs').run({});
+
+  const rows = JSON.parse(output) as { job: string }[];
+  assert.equal(rows[0]?.job, 'cafe-check:my-cafe');
+});
+
+test('원격 실행은 확인을 받은 뒤에야 POST 한다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.exposureRunNo);
+  const tools = createNaverTools(context);
+
+  await findTool(tools, 'list_exposure_jobs').run({});
+  const refused = await findTool(tools, 'run_exposure_check').run({ job: 'cafe-check:my-cafe' });
+
+  assert.equal(refused, RESULT.exposureRunNotApproved(CONFIRM.exposureRunNo));
+  assert.equal(server.calls.some(({ url }) => url.endsWith('/run')), false);
+});
+
+test('승인하면 원격 실행 runId 를 돌려준다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => CONFIRM.exposureRunYes);
+  const tools = createNaverTools(context);
+
+  await findTool(tools, 'list_exposure_jobs').run({});
+  const output = await findTool(tools, 'run_exposure_check').run({ job: 'cafe-check:my-cafe' });
+
+  assert.equal(output, RESULT.exposureRunStarted('내 카페', 'run-9'));
+  const run = server.calls.find(({ url }) => url.endsWith('/run'));
+  assert.equal(run?.url, '/api/jobs/cafe-check%3Amy-cafe/run');
+});
+
+test('다른 노출체크가 돌고 있으면 확인도 묻지 않는다', async (t) => {
+  const server = await fakeExposure({
+    jobs: [
+      {
+        id: 'cafe-check:my-cafe',
+        label: '내 카페',
+        description: '',
+        kind: 'cafe-check',
+        isRunning: false,
+        isBlocked: true,
+        blockReason: '다른 노출체크가 실행 중임',
+      },
+    ],
+  });
+  t.after(() => server.close());
+
+  const { context, spy } = exposureContext(server.baseUrl, async () => CONFIRM.exposureRunYes);
+  const tools = createNaverTools(context);
+
+  await findTool(tools, 'list_exposure_jobs').run({});
+  const output = await findTool(tools, 'run_exposure_check').run({ job: 'cafe-check:my-cafe' });
+
+  assert.equal(output, RESULT.exposureRunBlocked('내 카페', '다른 노출체크가 실행 중임'));
+  assert.equal(spy.askUserCalls.length, 0);
+});
+
+test('api_get 은 허용된 경로만 실제로 부른다', async (t) => {
+  const server = await fakeExposure();
+  t.after(() => server.close());
+
+  const { context } = exposureContext(server.baseUrl, async () => '');
+  const output = await findTool(createNaverTools(context), 'api_get').run({
+    service: 'exposure',
+    path: '/api/preset',
+  });
+
+  assert.equal(output.includes('displayName'), true);
+  assert.equal(server.calls.some(({ url }) => url === '/api/preset'), true);
+});
+
+test('도구는 28개다', () => {
+  // AGENT.md 가 "28개가 상한에 가깝다" 고 못박아 뒀다. 늘리려면 그 문장부터 다시 읽는다.
+  assert.equal(createNaverTools(createStubContext().context).length, 28);
+});
+
+test('로컬 실행도 확인 카드를 먼저 띄운다', async (t) => {
+  // 원격이든 로컬이든 30분짜리를 잘못 시작하는 비용은 같다.
+  const dir = mkdtempSync(join(tmpdir(), 'gng-exposure-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ scripts: { 'exposure:cafe': 'echo hi' } }),
+    'utf-8',
+  );
+
+  const { context, spy } = createStubContext(['NID_AUT', 'NID_SES'], async () => CONFIRM.exposureRunNo);
+  context.getEndpoints = () => ({
+    dabutBaseUrl: '',
+    schedulerBaseUrl: '',
+    exposureBotDir: dir,
+    exposureDashboardUrl: '',
+  });
+
+  const output = await findTool(createNaverTools(context), 'run_exposure_check').run({ job: 'cafe' });
+
+  assert.equal(spy.askUserCalls.length, 1);
+  assert.equal(output, RESULT.exposureRunNotApproved(CONFIRM.exposureRunNo));
 });

@@ -14,6 +14,8 @@ import {
 } from './usage';
 import { buildChoiceOptions, buildFormEchoLines, findInvalidField } from './question-form';
 import type {
+  AccountCardRequest,
+  AgentCardOutcome,
   AgentEventView,
   AgentQuestion,
   ChatMessageView,
@@ -83,10 +85,13 @@ const readableError = (error: unknown) => {
 };
 
 
-type CardField = { placeholder: string; type?: 'text' | 'password' };
+type CardField = { placeholder: string; type?: 'text' | 'password'; value?: string };
 
 type CardOptions = {
+  /** 코드가 쓴 문장만 온다. 모델이 준 문자열을 여기에 넣지 않는다. */
   lead: string;
+  /** 모델이 준 이유. 라벨을 달고 lead 아래에 따로 붙는다. */
+  note?: string;
   fields: CardField[];
   submitLabel: string;
   skipLabel?: string;
@@ -99,6 +104,7 @@ type CardOptions = {
 /** 키·계정·로그인 카드가 전부 이 모양을 쓴다. 문구와 칸만 바뀐다. */
 const appendCard = ({
   lead,
+  note,
   fields,
   submitLabel,
   skipLabel,
@@ -121,6 +127,13 @@ const appendCard = ({
   leadEl.textContent = lead;
   box.append(leadEl);
 
+  if (note?.trim()) {
+    const noteEl = document.createElement('div');
+    noteEl.className = 'card-note';
+    noteEl.textContent = ONBOARDING.agentReasonLabel(note.trim());
+    box.append(noteEl);
+  }
+
   const inputs: HTMLInputElement[] = [];
 
   if (fields.length > 0) {
@@ -131,6 +144,7 @@ const appendCard = ({
       const input = document.createElement('input');
       input.type = field.type ?? 'text';
       input.placeholder = field.placeholder;
+      input.value = field.value ?? '';
       input.autocomplete = 'off';
       form.append(input);
       inputs.push(input);
@@ -939,6 +953,121 @@ const requestAgentDabutLogin = ({ id, reason }: { id: number; reason: string }) 
   });
 };
 
+/**
+ * 에이전트가 exposure_login 을 부르면 이 카드가 뜬다.
+ * 비밀번호는 여기서 메인으로만 가고 모델은 보지 않는다.
+ */
+const requestAgentExposureLogin = ({ id, reason }: { id: number; reason: string }) => {
+  const finish = async (outcome: AgentCardOutcome) => {
+    const accepted = await api.answerExposureLogin(id, JSON.stringify(outcome));
+
+    if (accepted) {
+      addThinking();
+      return;
+    }
+
+    appendEntry(CHAT.roleSystem, CHAT.answerExpired, 'error');
+  };
+
+  appendCard({
+    // 첫 줄은 코드 문장으로 고정한다. reason 은 모델 문자열이라 note 로만 내려간다.
+    lead: ONBOARDING.askExposureLogin,
+    note: reason,
+    fields: [
+      { placeholder: ONBOARDING.exposureUserPlaceholder },
+      { placeholder: ONBOARDING.exposurePassPlaceholder, type: 'password' },
+    ],
+    submitLabel: ONBOARDING.exposureLoginLabel,
+    hint: ONBOARDING.exposureLoginHint,
+    onSubmit: async ([loginId, password], setError) => {
+      if (!loginId?.trim() || !password) return false;
+
+      try {
+        await api.loginExposure({ loginId: loginId.trim(), password });
+        appendEntry(CHAT.roleAgent, ONBOARDING.exposureLoginSaved(loginId.trim()));
+        await finish({ status: 'exposure_login', name: loginId.trim() });
+        return true;
+      } catch (error) {
+        setError(readableError(error));
+        return false;
+      }
+    },
+    onSkip: () => {
+      void finish({ status: 'cancelled' });
+    },
+  });
+};
+
+/**
+ * 에이전트가 manage_naver_account 를 부르면 이 카드가 뜬다.
+ *
+ * 비밀번호 칸이 이 경로에만 있다. 폼 질문(ask_user_form)에는 password 칸을 만들 수 없다 —
+ * 폼 답은 모델에게 그대로 돌아가기 때문이다.
+ */
+const requestAgentAccountCard = ({ id, mode, reason, label, naverId, accountId }: AccountCardRequest) => {
+  const finish = async (outcome: AgentCardOutcome) => {
+    const accepted = await api.answerAccountCard(id, JSON.stringify(outcome));
+
+    if (accepted) {
+      addThinking();
+      return;
+    }
+
+    appendEntry(CHAT.roleSystem, CHAT.answerExpired, 'error');
+  };
+
+  const isAdd = mode === 'add';
+
+  const fields: CardField[] = isAdd
+    ? [
+        { placeholder: ONBOARDING.accountLabelPlaceholder, value: label },
+        { placeholder: ONBOARDING.accountIdPlaceholder, value: naverId },
+        { placeholder: ONBOARDING.accountPwPlaceholder, type: 'password' },
+      ]
+    : [{ placeholder: ONBOARDING.accountPwOnlyPlaceholder, type: 'password' }];
+
+  // 첫 줄은 코드 문장으로 고정한다. reason 은 모델 문자열이라 note 로만 내려간다.
+  const lead = isAdd ? ONBOARDING.accountAddLead : ONBOARDING.accountPwChangeLead(label);
+
+  appendCard({
+    lead,
+    note: reason,
+    fields,
+    submitLabel: isAdd ? ONBOARDING.accountSaveLabel : ONBOARDING.accountPwChangeLabel,
+    hint: isAdd ? ONBOARDING.accountHint : ONBOARDING.accountPwChangeHint,
+    onSubmit: async (values, setError) => {
+      const [first, second, third] = values;
+      const nextLabel = isAdd ? (first ?? '').trim() : label;
+      const nextNaverId = isAdd ? (second ?? '').trim() : naverId;
+      const password = isAdd ? (third ?? '') : (first ?? '');
+
+      if (isAdd && !nextNaverId) return false;
+      if (!isAdd && !password) return false;
+
+      try {
+        const outcome = await api.applyAccountChange({
+          mode,
+          accountId,
+          label: nextLabel || nextNaverId,
+          naverId: nextNaverId,
+          password,
+        });
+
+        renderAccounts(await api.listAccounts());
+        await finish(outcome);
+        return true;
+      } catch (error) {
+        setError(readableError(error));
+        return false;
+      }
+    },
+    onSkip: () => {
+      appendEntry(CHAT.roleAgent, ONBOARDING.accountCardCancelled);
+      void finish({ status: 'cancelled' });
+    },
+  });
+};
+
 const requestServiceLogin = (lead: string) => {
   appendCard({
     lead,
@@ -1274,6 +1403,8 @@ const init = async () => {
   });
   api.onAgentQuestion(renderQuestion);
   api.onDabutLoginRequest(requestAgentDabutLogin);
+  api.onExposureLoginRequest(requestAgentExposureLogin);
+  api.onAccountCardRequest(requestAgentAccountCard);
 };
 
 settingsToggleEl.addEventListener('click', handleSettingsToggle);

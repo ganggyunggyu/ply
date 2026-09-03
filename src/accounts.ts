@@ -100,6 +100,32 @@ export const createAccountStore = ({ filePath, crypto }: AccountStoreOptions) =>
     return toPublicAccount(created);
   };
 
+  /**
+   * 저장된 비밀번호만 바꾼다. id 는 그대로 둔다.
+   *
+   * remove + add 로 흉내내면 nextAccountId 의 slug 규칙 때문에 같은 라벨이라도
+   * qwzx16 -> qwzx16-2 가 되고, 프로필 파티션이 id 를 쓰기 때문에 로그인 세션이 통째로 갈린다.
+   * 그래서 이 자리에 따로 둔다.
+   *
+   * 없는 id 면 null 이다. 던지지 않는다. "계정을 못 찾았다" 는 부르는 쪽이 사용자에게
+   * 그대로 전할 수 있는 결과이지 예외가 아니다.
+   */
+  const updatePassword = (id: string, password: string): NaverAccount | null => {
+    if (!password) throw new Error(ERRORS.passwordRequired);
+    if (!crypto.isAvailable()) throw new Error(ERRORS.safeStorageUnavailable);
+
+    const accounts = read();
+    const index = accounts.findIndex((account) => account.id === id);
+    if (index === -1) return null;
+
+    const current = accounts[index] as StoredAccount;
+    const updated: StoredAccount = { ...current, passwordCipher: crypto.encrypt(password) };
+
+    write(accounts.map((account, at) => (at === index ? updated : account)));
+
+    return toPublicAccount(updated);
+  };
+
   const remove = (id: string) => {
     write(read().filter((account) => account.id !== id));
     return list();
@@ -117,7 +143,7 @@ export const createAccountStore = ({ filePath, crypto }: AccountStoreOptions) =>
     return crypto.decrypt(account.passwordCipher);
   };
 
-  return { list, add, remove, find, readPassword };
+  return { list, add, updatePassword, remove, find, readPassword };
 };
 
 export type AccountStore = ReturnType<typeof createAccountStore>;

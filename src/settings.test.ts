@@ -275,3 +275,42 @@ test('이관이 비밀값을 날리지 않는다', () => {
   assert.equal(store.readApiKey(), 'sk-or-v1-secret');
   assert.equal(store.readSchedulerToken(), 'jwt-token-value');
 });
+
+test('노출지기 쿠키를 암호화해서 저장하고 되읽는다', () => {
+  const { store } = makeStore();
+
+  assert.equal(store.get().hasExposureCookie, false);
+  assert.equal(store.readExposureCookie(), null);
+
+  const saved = store.setExposureCookie('1756800000000.m1.sig');
+
+  assert.equal(saved.hasExposureCookie, true);
+  assert.equal(store.readExposureCookie(), '1756800000000.m1.sig');
+});
+
+test('빈 문자열을 주면 쿠키를 지운다', () => {
+  // 401 을 만난 도구가 이 경로로 지우고 exposure_login 을 다시 부르게 한다.
+  const { store } = makeStore();
+  store.setExposureCookie('1756800000000.m1.sig');
+
+  assert.equal(store.setExposureCookie('').hasExposureCookie, false);
+  assert.equal(store.readExposureCookie(), null);
+});
+
+test('공개 설정에 쿠키 값 자체는 안 실린다', () => {
+  const { store } = makeStore();
+  store.setExposureCookie('supersecretcookie.m1.sig');
+
+  assert.equal(JSON.stringify(store.get()).includes('supersecretcookie'), false);
+});
+
+test('안전 저장소가 없으면 쿠키를 저장하지 않는다', () => {
+  const { store } = makeStore(crypto(false));
+
+  assert.throws(() => store.setExposureCookie('a.b.c'), /안전 저장소/);
+});
+
+test('노출지기 주소에 기본값이 있다', () => {
+  // 비어 있으면 설치만 한 컴퓨터에서 노출지기 도구가 통째로 죽는다.
+  assert.equal(makeStore().store.get().endpoints.exposureDashboardUrl.startsWith('https://'), true);
+});

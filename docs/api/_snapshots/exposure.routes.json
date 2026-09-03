@@ -1,0 +1,50 @@
+{
+  "source": "../blog-cron-bot/dashboard/src/app/api",
+  "generatedAt": "2026-09-03T09:32:27.941Z",
+  "routes": {
+    "/api/accounts": [
+      "GET",
+      "POST"
+    ],
+    "/api/auth/login": [
+      "POST"
+    ],
+    "/api/auth/logout": [
+      "POST"
+    ],
+    "/api/health": [
+      "GET"
+    ],
+    "/api/jobs": [
+      "GET"
+    ],
+    "/api/jobs/{jobId}/run": [
+      "POST"
+    ],
+    "/api/outputs": [
+      "GET"
+    ],
+    "/api/outputs/download": [
+      "GET"
+    ],
+    "/api/pm2": [
+      "GET"
+    ],
+    "/api/pm2/{app}/{action}": [
+      "POST"
+    ],
+    "/api/preset": [
+      "GET",
+      "PUT"
+    ],
+    "/api/runs": [
+      "GET"
+    ],
+    "/api/runs/{runId}/stop": [
+      "POST"
+    ],
+    "/api/runs/{runId}/stream": [
+      "GET"
+    ]
+  }
+}

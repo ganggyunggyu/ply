@@ -1,8 +1,44 @@
 import type { AxiosInstance } from 'axios';
-import type { AccountStore } from './accounts';
-import type { QuestionChoice, QuestionField, QuestionFieldType } from './bridge';
+import type { AccountStore, NaverAccount } from './accounts';
+import {
+  API_SERVICES,
+  clampApiBody,
+  isAllowedApiPath,
+  isApiService,
+  normalizeApiQuery,
+  redactSecrets,
+  type ApiService,
+} from './api-access';
+import { API_DOC_TOPICS, isApiDocTopic, readApiDoc } from './api-docs';
+import type {
+  AccountCardRequest,
+  AgentCardOutcome,
+  DabutSyncStatus,
+  QuestionChoice,
+  QuestionField,
+  QuestionFieldType,
+} from './bridge';
 import { kstMinutesNow, kstToday } from './clock';
 import { QUESTION_FIELD_TYPES, QUESTION_FORM_CANCEL } from './constants';
+import {
+  apiGet,
+  describeExposureError,
+  isExposureCookieExpired,
+  isExposureUnauthorized,
+  listRemoteJobs,
+  readPreset,
+  runRemoteJob,
+  writePreset,
+  type RemoteJob,
+} from './exposure-api';
+import {
+  applyPresetAction,
+  describeSavedPreset,
+  isPresetActionName,
+  PRESET_ACTIONS,
+  readTenantPreset,
+  type PresetChange,
+} from './exposure-preset';
 import { generateText, type ToolSpec } from './openrouter';
 import { CONFIRM, ERRORS, PROGRESS } from './messages';
 import {
@@ -21,6 +57,7 @@ import {
   buildManuscriptPrompt,
   MANUSCRIPT_SYSTEM,
   PARAM_DESCRIPTIONS as PARAM,
+  RESULT_PRESET,
   TOOL_DESCRIPTIONS as DESC,
   TOOL_RESULTS as RESULT,
 } from './prompts';
@@ -84,6 +121,17 @@ export type ToolContext = {
   /** 값이 여러 개일 때. 답은 { key: value } 를 JSON 으로 직렬화한 문자열이다. */
   askUserForm: (question: string, fields: QuestionField[]) => Promise<string>;
   requestDabutLogin: (reason: string) => Promise<string>;
+  /**
+   * 계정 카드를 띄우고 사용자가 끝낼 때까지 기다린다. 답은 AgentCardOutcome 을 직렬화한 문자열이다.
+   * 평문 비밀번호는 이 경로에 실리지 않는다. 패널 -> 메인 -> 저장소로만 흐른다.
+   */
+  requestAccountCard: (request: Omit<AccountCardRequest, 'id'>) => Promise<string>;
+  /** 노출지기 로그인 카드. dabut_login 과 같은 모양이다. */
+  requestExposureLogin: (reason: string) => Promise<string>;
+  /** 노출지기 세션 쿠키. 없거나 만료면 exposure_login 을 부른다. */
+  getExposureCookie: () => string | undefined;
+  /** 401 을 만났을 때 저장된 쿠키를 지운다. 다음 호출이 다시 로그인을 요청하게 만든다. */
+  clearExposureCookie: () => void;
   /**
    * 이번 실행의 정지 스위치.
    *
@@ -380,6 +428,122 @@ export const clampListLimit = (raw: unknown): number => {
 
 export const isDeleteApproved = (answer: string) => answer.trim() === CONFIRM.deleteYes;
 
+/**
+ * 계정 삭제 승인. delete_blog_posts 와 같은 모양이지만 토큰이 다르다.
+ * 토큰이 겹치면 글 삭제 승인이 계정 삭제 승인으로 샌다.
+ */
+export const isAccountRemoveApproved = (answer: string) => answer.trim() === CONFIRM.accountRemoveYes;
+
+/** 노출체크 실행 승인. 30분짜리를 잘못 시작하는 비용이 클릭 한 번보다 훨씬 크다. */
+export const isExposureRunApproved = (answer: string) => answer.trim() === CONFIRM.exposureRunYes;
+
+/** 프리셋 저장 승인. 전체 교체라는 사실을 사용자가 알고 눌러야 한다. */
+export const isPresetSaveApproved = (answer: string) => answer.trim() === CONFIRM.presetSaveYes;
+
+export type ApprovalOutcome = {
+  approved: boolean;
+  answer: string;
+  /** 사용자가 실제로 답했는지. 만료는 승인도 거절도 아니다. */
+  answered: boolean;
+};
+
+const requestApproval = async ({
+  askUser,
+  question,
+  choices,
+  isApproved,
+}: {
+  askUser: ToolContext['askUser'];
+  question: string;
+  choices: string[];
+  isApproved: (answer: string) => boolean;
+}): Promise<ApprovalOutcome> => {
+  try {
+    const answer = await askUser(question, choices);
+
+    return { approved: isApproved(answer), answer, answered: true };
+  } catch {
+    return { approved: false, answer: '', answered: false };
+  }
+};
+
+/** 문안은 코드가 저장소에서 읽은 값으로 만든다. 모델은 확인 문구를 만들 수 없다. */
+export const requestAccountRemoveApproval = ({
+  askUser,
+  account,
+}: {
+  askUser: ToolContext['askUser'];
+  account: NaverAccount;
+}): Promise<ApprovalOutcome> =>
+  requestApproval({
+    askUser,
+    question: CONFIRM.accountRemoveQuestion({
+      label: account.label,
+      naverId: account.naverId,
+      id: account.id,
+    }),
+    choices: [CONFIRM.accountRemoveYes, CONFIRM.accountRemoveNo],
+    isApproved: isAccountRemoveApproved,
+  });
+
+export const requestExposureRunApproval = ({
+  askUser,
+  label,
+}: {
+  askUser: ToolContext['askUser'];
+  label: string;
+}): Promise<ApprovalOutcome> =>
+  requestApproval({
+    askUser,
+    question: CONFIRM.exposureRunQuestion(label),
+    choices: [CONFIRM.exposureRunYes, CONFIRM.exposureRunNo],
+    isApproved: isExposureRunApproved,
+  });
+
+export const requestPresetSaveApproval = ({
+  askUser,
+  change,
+}: {
+  askUser: ToolContext['askUser'];
+  change: PresetChange;
+}): Promise<ApprovalOutcome> =>
+  requestApproval({
+    askUser,
+    question: CONFIRM.presetSaveQuestion({ lines: change.summary, untouched: change.untouched }),
+    choices: [CONFIRM.presetSaveYes, CONFIRM.presetSaveNo],
+    isApproved: isPresetSaveApproved,
+  });
+
+/**
+ * 카드가 돌려준 답을 좁힌다. 못 읽으면 취소로 본다.
+ * 값을 지어내는 것보다 아무것도 안 한 것으로 두는 쪽이 낫다.
+ */
+export const parseCardOutcome = (raw: string): AgentCardOutcome => {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { status: 'cancelled' };
+
+    const outcome = parsed as AgentCardOutcome;
+
+    return outcome.status === 'exposure_login' ||
+      outcome.status === 'account_added' ||
+      outcome.status === 'account_password'
+      ? outcome
+      : { status: 'cancelled' };
+  } catch {
+    return { status: 'cancelled' };
+  }
+};
+
+/** 다붓 반영 결과 한 줄. 로컬 줄과 반드시 따로 낸다. */
+export const describeDabutSync = (status: DabutSyncStatus, detail: string): string => {
+  if (status === 'changed') return RESULT.accountDabutChanged(detail);
+  if (status === 'no_match') return RESULT.accountDabutNoMatch;
+  if (status === 'no_login') return RESULT.accountDabutNoLogin;
+
+  return RESULT.accountDabutFailed(detail);
+};
+
 export type DeleteTargetCheck =
   | { ok: true; logNos: string[] }
   | { ok: false; reason: 'empty' | 'invalid' | 'tooMany' | 'unknown' | 'accountMismatch'; detail: string[] };
@@ -510,8 +674,9 @@ export const MAX_SCHEDULE_ACCOUNTS = 12;
  * 예약이 내 것인지 판별하는 근거. Schedule 문서의 accountId 는 네이버 로그인 id 이고,
  * /api/blog-accounts 가 다붓 JWT 소유자로 스코프해서 주는 loginId 와 같은 값이다.
  *
- * 스케줄러의 GET/DELETE /schedules 에는 소유자 스코프가 없어서(POST /schedules/:id/execute 만 있다)
- * 토큰만 유효하면 남의 예약도 읽고 지운다. 그러니 소유 판정은 여기 클라이언트가 해야 한다.
+ * 스케줄러의 GET/DELETE /schedules 는 다붓 인증이 켜져 있을 때만 소유자로 스코프한다.
+ * JWT_SECRET 이나 DABUT_APP_MONGO_URI 가 없는 배포에서는 인증 훅과 스코프가 함께 꺼져
+ * 아무나 전부 읽고 지운다. 서버 보호가 조건부라서 소유 판정은 여기 클라이언트도 한다.
  */
 export type OwnedAccount = {
   id: string;
@@ -834,6 +999,10 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     askUser,
     askUserForm,
     requestDabutLogin,
+    requestAccountCard,
+    requestExposureLogin,
+    getExposureCookie,
+    clearExposureCookie,
     signal,
   } = context;
 
@@ -842,6 +1011,20 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
   const attemptedLogNos = new Set<string>();
   const refusedLogNos = new Set<string>();
   const knownProjectIds = new Set<string>();
+  /** list_accounts 가 이번 실행에서 돌려준 계정 id. 계정을 고치는 도구는 전부 이걸 통과한다. */
+  const knownAccountIds = new Set<string>();
+  /** 이번 실행에서 이미 손댄 계정. 같은 계정을 두 번 고치지 않는다. */
+  const touchedAccountIds = new Set<string>();
+  /**
+   * 사용자가 이번 실행에서 되돌려보낸 비밀번호 카드.
+   *
+   * 거절은 끈적해야 한다. 그렇지 않으면 모델이 max_iterations 까지 비밀번호 칸을 다시 띄울 수 있고,
+   * 앱 크롬 안에서 뜨는 정품 카드라 사용자는 몇 번째인지 말고는 구분할 근거가 없다.
+   * remove 는 touchedAccountIds 로 이미 이렇게 하고 있었다. 크리덴셜 카드에도 같은 규칙을 건다.
+   */
+  const declinedCards = new Set<'account_add' | 'exposure_login'>();
+  /** 노출체크 목록을 이번 실행에서 읽었을 때의 원격 잡. run 이 라벨과 차단 사유를 여기서 읽는다. */
+  const remoteJobs = new Map<string, RemoteJob>();
   /** id 를 사람이 읽는 이름으로 되돌리는 표. get_schedule 이 projectId 를 라벨로 풀 때 쓴다. */
   const projectLabels = new Map<string, string>();
   const knownSchedules = new Map<string, KnownSchedule>();
@@ -851,9 +1034,9 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
   /**
    * 내 네이버 계정(= Schedule.accountId) 표. 예약 도구 세 개가 전부 이걸 통과해야 한다.
    *
-   * 스케줄러의 GET/DELETE /schedules 에는 소유자 스코프가 없어서 토큰만 유효하면 남의 예약이
-   * 그대로 나오고 지워진다. "이번 실행에서 읽은 id 만" 이라는 게이트는 그 상태에서
-   * "존재하는 아무 id 나" 와 같은 뜻이라 소유 판정을 여기서 따로 한다.
+   * 스케줄러의 소유자 스코프는 다붓 인증이 켜져 있을 때만 걸린다. 꺼진 배포에서는 목록이
+   * 전부 나오고, 그때 "이번 실행에서 읽은 id 만" 이라는 게이트는 "존재하는 아무 id 나" 와
+   * 같은 뜻이 된다. 서버 설정에 기대지 않도록 소유 판정을 여기서 따로 한다.
    *
    * 실패를 캐시하지 않는다. 로그인이 늦게 끝나면 다음 호출에서 다시 받아야 한다.
    */
@@ -925,6 +1108,9 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     run: async () => {
       const accounts = accountStore.list();
       if (accounts.length === 0) return RESULT.noAccounts;
+
+      // 계정을 고치는 도구가 받을 수 있는 id 를 여기서 확정한다. 목록에 없던 id 는 이후에 거부된다.
+      accounts.forEach(({ id }) => knownAccountIds.add(id));
 
       return JSON.stringify(accounts);
     },
@@ -1208,6 +1394,379 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       );
 
       return early ?? JSON.stringify(rows);
+    },
+  };
+
+  const manageNaverAccount: ToolSpec = {
+    name: 'manage_naver_account',
+    description: DESC.manageNaverAccount,
+    parameters: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['add', 'change_password', 'remove'],
+          description: PARAM.accountAction,
+        },
+        accountId: { type: 'string', description: PARAM.manageAccountId },
+        label: { type: 'string', description: PARAM.accountLabel },
+        naverId: { type: 'string', description: PARAM.accountNaverId },
+        reason: { type: 'string', description: PARAM.accountReason },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    // 비밀번호 파라미터가 없다. 카드로 받는다. 인자에 실으면 tool_start 이벤트와
+    // OpenRouter 요청 본문에 평문이 그대로 남는다.
+    run: async ({ action, accountId, label, naverId, reason }) => {
+      const mode = String(action ?? '');
+      const note = reason === undefined || reason === null ? '' : String(reason);
+
+      if (mode === 'add') {
+        if (declinedCards.has('account_add')) return RESULT.accountCardAlreadyDeclined;
+
+        onProgress(PROGRESS.accountCardWaiting);
+
+        const answer = await requestAccountCard({
+          mode: 'add',
+          accountId: '',
+          label: label ? String(label) : '',
+          naverId: naverId ? String(naverId) : '',
+          reason: note,
+        }).catch(() => '');
+
+        if (!answer) {
+          declinedCards.add('account_add');
+
+          return signal?.aborted ? RESULT.runStopped : RESULT.accountCardNoAnswer;
+        }
+
+        const outcome = parseCardOutcome(answer);
+        if (outcome.status !== 'account_added') {
+          declinedCards.add('account_add');
+
+          return RESULT.accountCardCancelled;
+        }
+
+        knownAccountIds.add(outcome.id);
+
+        return RESULT.accountAdded(outcome.label, outcome.id);
+      }
+
+      const id = accountId === undefined || accountId === null ? '' : String(accountId).trim();
+      if (!id) return RESULT.accountIdRequired;
+
+      // 목록에 없던 id 는 거부한다. delete_blog_posts 의 knownPosts 와 같은 이유다.
+      if (!knownAccountIds.has(id)) return RESULT.accountNotListed(id);
+
+      const account = accountStore.find(id);
+      if (!account) return RESULT.accountNotFound(id);
+
+      if (touchedAccountIds.has(id)) return RESULT.accountAlreadyAttempted(id);
+
+      if (mode === 'change_password') {
+        onProgress(PROGRESS.accountCardWaiting);
+
+        const answer = await requestAccountCard({
+          mode: 'change_password',
+          accountId: id,
+          label: account.label,
+          naverId: account.naverId,
+          reason: note,
+        }).catch(() => '');
+
+        // 거절도 끈적하게 만든다. 성공했을 때만 표시하면 카드를 무한히 다시 띄울 수 있다.
+        if (!answer) {
+          touchedAccountIds.add(id);
+
+          return signal?.aborted ? RESULT.runStopped : RESULT.accountCardNoAnswer;
+        }
+
+        const outcome = parseCardOutcome(answer);
+        if (outcome.status !== 'account_password') {
+          touchedAccountIds.add(id);
+
+          return RESULT.accountCardCancelled;
+        }
+
+        touchedAccountIds.add(id);
+
+        // 두 곳을 반드시 따로 적는다. 한 줄로 뭉치면 모델이 "다 바꿨어요" 라고 보고한다.
+        return RESULT.accountPasswordChanged([
+          RESULT.accountLocalChanged,
+          describeDabutSync(outcome.dabut, outcome.dabutDetail),
+        ]);
+      }
+
+      if (mode !== 'remove') return RESULT.accountActionUnknown(mode);
+
+      onProgress(PROGRESS.accountRemoveConfirmWaiting(account.label));
+
+      const { approved, answer, answered } = await requestAccountRemoveApproval({ askUser, account });
+
+      if (!approved) {
+        touchedAccountIds.add(id);
+
+        return answered ? RESULT.accountRemoveNotApproved(answer) : RESULT.accountRemoveNoAnswer(id);
+      }
+
+      touchedAccountIds.add(id);
+      accountStore.remove(id);
+      knownAccountIds.delete(id);
+
+      return RESULT.accountRemoved(account.label, id);
+    },
+  };
+
+  const exposureLogin: ToolSpec = {
+    name: 'exposure_login',
+    description: DESC.exposureLogin,
+    parameters: {
+      type: 'object',
+      properties: { reason: { type: 'string', description: PARAM.loginReason } },
+      additionalProperties: false,
+    },
+    run: async ({ reason }) => {
+      if (declinedCards.has('exposure_login')) return RESULT.exposureLoginAlreadyDeclined;
+
+      onProgress(PROGRESS.exposureLoginWaiting);
+
+      const answer = await requestExposureLogin(String(reason ?? '')).catch(() => '');
+
+      if (!answer) {
+        declinedCards.add('exposure_login');
+
+        return signal?.aborted ? RESULT.runStopped : RESULT.exposureLoginNoAnswer;
+      }
+
+      const outcome = parseCardOutcome(answer);
+
+      if (outcome.status !== 'exposure_login') {
+        declinedCards.add('exposure_login');
+
+        return RESULT.exposureLoginSkipped;
+      }
+
+      return RESULT.exposureLoginDone(outcome.name);
+    },
+  };
+
+  /**
+   * 노출지기를 쓰는 도구가 공통으로 지나는 문. 쿠키가 없거나 확실히 죽었으면 여기서 끊는다.
+   * 만료 판정은 문자열만 보고 하므로 네트워크를 타지 않는다. 서명 검증은 서버가 401 로 한다.
+   */
+  const exposureSession = ():
+    | { ok: true; baseUrl: string; cookie: string }
+    | { ok: false; result: string } => {
+    const cookie = getExposureCookie();
+    if (!cookie) return { ok: false, result: RESULT.exposureNotLoggedIn };
+
+    if (isExposureCookieExpired(cookie, Date.now())) {
+      clearExposureCookie();
+
+      return { ok: false, result: RESULT.exposureSessionExpired };
+    }
+
+    return { ok: true, baseUrl: getEndpoints().exposureDashboardUrl, cookie };
+  };
+
+  /** 401 은 쿠키를 지우고 다시 로그인시키는 유일한 신호다. 그 밖의 실패는 원문을 그대로 올린다. */
+  const describeExposureFailure = (error: unknown): string => {
+    if (isExposureUnauthorized(error)) {
+      clearExposureCookie();
+
+      return RESULT.exposureSessionExpired;
+    }
+
+    return RESULT.exposureRequestFailed(describeExposureError(error));
+  };
+
+  const updateExposurePreset: ToolSpec = {
+    name: 'update_exposure_preset',
+    description: DESC.updateExposurePreset,
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: [...PRESET_ACTIONS], description: PARAM.presetAction },
+        label: { type: 'string', description: PARAM.presetLabel },
+        sheetUrl: { type: 'string', description: PARAM.presetSheetUrl },
+        tabTitle: { type: 'string', description: PARAM.presetTabTitle },
+        targets: { type: 'array', items: { type: 'string' }, description: PARAM.presetCafeTargets },
+        checkId: { type: 'string', description: PARAM.presetCheckId },
+        targetId: { type: 'string', description: PARAM.presetTargetId },
+        blogIds: { type: 'array', items: { type: 'string' }, description: PARAM.presetBlogIds },
+        url: { type: 'string', description: PARAM.presetDoorayUrl },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    run: async (input) => {
+      const action = String(input.action ?? '');
+      if (!isPresetActionName(action)) return RESULT_PRESET.unknownPresetAction(action);
+
+      const session = exposureSession();
+      if (!session.ok) return session.result;
+
+      const { baseUrl, cookie } = session;
+
+      onProgress(PROGRESS.exposurePresetLoading);
+
+      let current: unknown;
+
+      try {
+        ({ preset: current } = await readPreset({ baseUrl, cookie }));
+      } catch (error) {
+        return describeExposureFailure(error);
+      }
+
+      const parsed = readTenantPreset(current);
+      if (!parsed.ok) return parsed.result;
+
+      // 병합은 반드시 코드가 한다. PUT 이 전체 교체라서 모델이 JSON 을 다시 쓰면
+      // 안 건드린 항목이 조용히 사라지고 그 실패에는 에러가 없다.
+      const applied = applyPresetAction(parsed.preset, action, input);
+      if (!applied.ok) return applied.result;
+
+      const { change } = applied;
+
+      onProgress(PROGRESS.exposurePresetConfirmWaiting);
+
+      const { approved, answer, answered } = await requestPresetSaveApproval({ askUser, change });
+
+      if (!approved) {
+        return answered ? RESULT.presetNotApproved(answer) : RESULT.presetNoAnswer;
+      }
+
+      if (signal?.aborted) return RESULT.runStopped;
+
+      onProgress(PROGRESS.exposurePresetSaving);
+
+      // PUT 은 전체 교체다. 카드를 읽는 동안 대시보드에서 누가 뭘 고쳤으면 그게 조용히 덮인다.
+      // 버전 헤더가 없으니 승인 직후에 한 번 더 읽어 비교하는 것이 우리가 할 수 있는 검사다.
+      // 문자열 비교라 키 순서가 흔들리면 헛짚을 수 있는데, 헛짚는 쪽은 "저장을 안 한다" 이다.
+      // 놓치는 쪽이 덮어쓰기라서 이 방향으로 틀리는 편이 맞다.
+      let latest: unknown;
+
+      try {
+        ({ preset: latest } = await readPreset({ baseUrl, cookie }));
+      } catch (error) {
+        return describeExposureFailure(error);
+      }
+
+      if (JSON.stringify(latest) !== JSON.stringify(current)) {
+        return RESULT.presetChangedWhileWaiting;
+      }
+
+      let saved: unknown;
+
+      try {
+        ({ preset: saved } = await writePreset({ baseUrl, cookie, preset: change.preset }));
+      } catch (error) {
+        // 400 의 문구는 노출지기가 사용자에게 보여주려고 쓴 한국어다. 고쳐 쓰지 않는다.
+        const status = (error as { response?: { status?: number } } | null)?.response?.status;
+        if (status === 400 || status === 404) {
+          return RESULT.presetRejected(describeExposureError(error));
+        }
+
+        return describeExposureFailure(error);
+      }
+
+      // 보내기 전 요약이 아니라 서버가 되돌려준 값을 보고한다.
+      // 노출지기는 저장 직전에 blogIds 를 정규화하고 못 쓰는 값을 조용히 버린다.
+      return RESULT.presetSaved(describeSavedPreset(change.verify, saved));
+    },
+  };
+
+  const readApiDocTool: ToolSpec = {
+    name: 'read_api_doc',
+    description: DESC.readApiDoc,
+    parameters: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', enum: [...API_DOC_TOPICS], description: PARAM.apiDocTopic },
+        section: { type: 'string', description: PARAM.apiDocSection },
+      },
+      additionalProperties: false,
+    },
+    run: async ({ topic, section }) => {
+      const wanted = topic === undefined || topic === null ? '' : String(topic).trim();
+      const part = section === undefined || section === null ? '' : String(section).trim();
+
+      if (wanted && !isApiDocTopic(wanted)) return readApiDoc(wanted);
+
+      return readApiDoc(wanted || undefined, part || undefined);
+    },
+  };
+
+  const apiGetTool: ToolSpec = {
+    name: 'api_get',
+    description: DESC.apiGet,
+    parameters: {
+      type: 'object',
+      properties: {
+        service: { type: 'string', enum: [...API_SERVICES], description: PARAM.apiService },
+        path: { type: 'string', description: PARAM.apiPath },
+        // 자유 형식이라 properties 는 비운다. 값 종류는 normalizeApiQuery 가 좁힌다.
+        query: { type: 'object', description: PARAM.apiQuery, properties: {}, additionalProperties: true },
+      },
+      required: ['service', 'path'],
+      additionalProperties: false,
+    },
+    run: async ({ service, path, query }) => {
+      const name = String(service ?? '');
+      if (!isApiService(name)) return RESULT.apiGetUnknownService(name, [...API_SERVICES]);
+
+      const route = path === undefined || path === null ? '' : String(path).trim();
+      if (!route) return RESULT.apiGetPathRequired;
+      if (!isAllowedApiPath(name as ApiService, route)) {
+        return RESULT.apiGetPathNotAllowed(name, route);
+      }
+
+      // 인증은 코드가 붙인다. 도구는 헤더 파라미터를 받지 않는다.
+      const endpoints = getEndpoints();
+      let baseUrl: string;
+      let auth: { kind: 'bearer'; token: string } | { kind: 'cookie'; cookie: string };
+
+      if (name === 'exposure') {
+        const session = exposureSession();
+        if (!session.ok) return session.result;
+
+        baseUrl = session.baseUrl;
+        auth = { kind: 'cookie', cookie: session.cookie };
+      } else {
+        const token = getSchedulerToken();
+        if (!token) return RESULT.apiGetNoAuth(name);
+
+        baseUrl = name === 'dabut' ? endpoints.dabutBaseUrl : endpoints.schedulerBaseUrl;
+        auth = { kind: 'bearer', token };
+      }
+
+      onProgress(PROGRESS.apiGetLoading(name, route));
+
+      let status: number;
+      let data: unknown;
+
+      try {
+        ({ status, data } = await apiGet({ baseUrl, auth, path: route, query: normalizeApiQuery(query) }));
+      } catch (error) {
+        return RESULT.apiGetFailed(0, describeExposureError(error));
+      }
+
+      // 비밀 키는 성공/실패를 가리지 않고 지운다. 400 본문에도 요청 필드가 되돌아 실린다.
+      const body = typeof data === 'string' ? data : JSON.stringify(redactSecrets(data ?? null));
+
+      if (status === 401 && name === 'exposure') {
+        clearExposureCookie();
+
+        return RESULT.exposureSessionExpired;
+      }
+      // 문서가 실제 서버와 어긋났을 때의 마지막 백스톱. 값을 지어내지 말라고 못박는다.
+      if (status === 404) return RESULT.apiGetNotFound(name, route);
+      if (status >= 400) return RESULT.apiGetFailed(status, clampApiBody(body).text);
+
+      const { text, truncated } = clampApiBody(body);
+
+      return truncated ? RESULT.apiGetTruncated(text) : text;
     },
   };
 
@@ -1686,8 +2245,8 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
 
         if (!schedule) return RESULT.scheduleNotFound(id);
 
-        // 이 라우트에는 소유자 스코프가 없다. 남의 예약을 읽어 knownSchedules 에 넣으면
-        // 취소 게이트가 그 id 를 "내가 읽은 것" 으로 인정해 버린다.
+        // 이 라우트의 소유자 스코프는 서버 설정에 달려 있다. 꺼진 배포에서 남의 예약을 읽어
+        // knownSchedules 에 넣으면 취소 게이트가 그 id 를 "내가 읽은 것" 으로 인정해 버린다.
         if (!isOwnedSchedule(schedule.accountId, owned)) return RESULT.scheduleNotOwned(id);
 
         toKnownSchedules([schedule]).forEach((row) => knownSchedules.set(row.id, row));
@@ -1749,7 +2308,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
 
       if (!schedule) return RESULT.scheduleNotFound(scheduleId);
 
-      // DELETE /schedules/:id 에도 소유자 확인이 없다. 방금 서버에서 읽은 계정으로 여기서 막는다.
+      // DELETE /schedules/:id 의 소유자 확인도 서버 설정에 달려 있다. 방금 서버에서 읽은 계정으로 여기서도 막는다.
       // 확인 카드를 띄우기 전에 끊어야 사용자가 남의 예약 취소를 승인할 기회조차 생기지 않는다.
       if (!isOwnedSchedule(schedule.accountId, owned)) {
         knownSchedules.delete(scheduleId);
@@ -1804,14 +2363,48 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     name: 'list_exposure_jobs',
     description: DESC.listExposureJobs,
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+    /*
+     * 노출지기에 로그인돼 있으면 서버 목록을 먼저 쓴다. 그쪽이 이 회원의 프리셋 기준으로
+     * 걸러 준 것이고, 직접 만든 카페 체크(cafe-check:*)와 차단 사유까지 들어 있다.
+     * 로컬 package.json 파싱은 EXPOSURE_JOB_LABELS 의 하드코딩 라벨 6개에 묶여 있고
+     * 저장소 경로가 설정된 컴퓨터에서만 된다. 그래서 폴백으로 내린다.
+     */
     run: async () => {
+      const session = exposureSession();
+
+      if (session.ok) {
+        onProgress(PROGRESS.exposureJobsLoading);
+
+        try {
+          const jobs = await listRemoteJobs(session);
+
+          remoteJobs.clear();
+          jobs.forEach((job) => remoteJobs.set(job.id, job));
+
+          if (jobs.length > 0) {
+            return JSON.stringify(
+              jobs.map(({ id, label, description, isRunning, isBlocked, blockReason }) => ({
+                job: id,
+                label,
+                description,
+                isRunning,
+                ...(isBlocked ? { blocked: blockReason } : {}),
+              })),
+            );
+          }
+        } catch (error) {
+          // 서버를 못 읽었다고 여기서 끝내지 않는다. 로컬 저장소가 있으면 그쪽으로 계속 간다.
+          if (isExposureUnauthorized(error)) clearExposureCookie();
+        }
+      }
+
       const { exposureBotDir } = getEndpoints();
-      if (!exposureBotDir) return RESULT.exposureDirUnset;
+      if (!exposureBotDir) return session.ok ? RESULT.exposureNoRemoteJobs : session.result;
 
       const jobs = listExposureJobs(exposureBotDir);
       if (!jobs.length) return RESULT.exposureNoJobs(exposureBotDir);
 
-      return JSON.stringify(jobs.map(({ key, label, description }) => ({ key, label, description })));
+      return JSON.stringify(jobs.map(({ key, label, description }) => ({ job: key, label, description })));
     },
   };
 
@@ -1826,11 +2419,63 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
       additionalProperties: false,
     },
     run: async ({ job }) => {
-      const { exposureBotDir } = getEndpoints();
-      if (!exposureBotDir) return RESULT.exposureDirUnset;
+      const wanted = String(job ?? '').trim();
+      if (!wanted) return RESULT.unknownExposureJob;
 
-      const target = findExposureJob(exposureBotDir, String(job));
+      const session = exposureSession();
+      const remote = remoteJobs.get(wanted);
+
+      /*
+       * 원격 실행 경로. 프롬프트만으로는 "카페노출체크하고싶어" 사고를 못 막는다.
+       * delete_blog_posts 와 cancel_schedule 이 같은 사고를 안 내는 이유는 도구가 스스로
+       * 확인 카드를 띄우기 때문이다. 여기도 같은 문을 단다.
+       * 한 번 더 묻는 비용은 클릭 한 번이고, 잘못 시작하는 비용은 30분이다.
+       */
+      if (session.ok && remote) {
+        if (remote.isBlocked) return RESULT.exposureRunBlocked(remote.label, remote.blockReason);
+
+        onProgress(PROGRESS.exposureRunConfirmWaiting(remote.label));
+
+        const { approved, answer, answered } = await requestExposureRunApproval({
+          askUser,
+          label: remote.label,
+        });
+
+        if (!approved) {
+          return answered ? RESULT.exposureRunNotApproved(answer) : RESULT.exposureRunNoAnswer;
+        }
+
+        if (signal?.aborted) return RESULT.runStopped;
+
+        onProgress(PROGRESS.exposureRemoteStarting(remote.label));
+
+        try {
+          const { runId } = await runRemoteJob({ ...session, jobId: remote.id });
+
+          return RESULT.exposureRunStarted(remote.label, runId);
+        } catch (error) {
+          return describeExposureFailure(error);
+        }
+      }
+
+      const { exposureBotDir } = getEndpoints();
+      if (!exposureBotDir) return session.ok ? RESULT.unknownExposureJob : session.result;
+
+      const target = findExposureJob(exposureBotDir, wanted);
       if (!target) return RESULT.unknownExposureJob;
+
+      onProgress(PROGRESS.exposureRunConfirmWaiting(target.label));
+
+      const { approved, answer, answered } = await requestExposureRunApproval({
+        askUser,
+        label: target.label,
+      });
+
+      if (!approved) {
+        return answered ? RESULT.exposureRunNotApproved(answer) : RESULT.exposureRunNoAnswer;
+      }
+
+      if (signal?.aborted) return RESULT.runStopped;
 
       onProgress(PROGRESS.exposureStarting(target.label));
 
@@ -1881,6 +2526,11 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     cancelScheduleTool,
     listExposureJobsTool,
     runExposureCheck,
+    manageNaverAccount,
+    exposureLogin,
+    updateExposurePreset,
+    readApiDocTool,
+    apiGetTool,
     listServices,
     openService,
     openTab,

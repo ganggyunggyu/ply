@@ -14,6 +14,7 @@ export type ServiceEndpointsView = {
   dabutBaseUrl: string;
   schedulerBaseUrl: string;
   exposureBotDir: string;
+  exposureDashboardUrl: string;
 };
 
 export type ServiceCatalogItemView = {
@@ -33,6 +34,7 @@ export type ServiceCatalogItemView = {
 export type PublicSettings = {
   hasApiKey: boolean;
   hasSchedulerToken: boolean;
+  hasExposureCookie: boolean;
   schedulerLabel: string;
   agentModel: string;
   writerModel: string;
@@ -103,6 +105,47 @@ export type AgentQuestion = {
   fields?: QuestionField[];
 };
 
+/**
+ * 에이전트가 띄우는 계정 카드.
+ *
+ * 비밀번호는 이 요청에도 답에도 실리지 않는다. 패널이 입력받아 메인으로 바로 넘기고
+ * 메인이 저장한다. 모델은 어느 지점에서도 값을 보지 못한다.
+ */
+export type AccountCardRequest = {
+  id: number;
+  mode: 'add' | 'change_password';
+  reason: string;
+  /** add 는 미리 채울 값, change_password 는 어느 계정인지 보여줄 이름 */
+  label: string;
+  naverId: string;
+  accountId: string;
+};
+
+/** 다붓 쪽 반영 결과. 로컬과 반드시 따로 적는다. 한 줄로 뭉치면 절반만 바뀐 것을 못 본다. */
+export type DabutSyncStatus = 'changed' | 'no_match' | 'no_login' | 'failed';
+
+export type AccountChangeInput = {
+  mode: 'add' | 'change_password';
+  accountId: string;
+  label: string;
+  naverId: string;
+  password: string;
+};
+
+/** 카드가 끝나고 모델에게 돌아가는 값. 여기에도 비밀번호는 없다. */
+export type AgentCardOutcome =
+  | { status: 'cancelled' }
+  | { status: 'exposure_login'; name: string }
+  | { status: 'account_added'; id: string; label: string }
+  | {
+      status: 'account_password';
+      id: string;
+      label: string;
+      local: boolean;
+      dabut: DabutSyncStatus;
+      dabutDetail: string;
+    };
+
 export type BridgeApi = {
   getState: () => Promise<BrowserStateView>;
   createTab: (options?: { url?: string; profileId?: string; openedByAgent?: boolean }) => Promise<number>;
@@ -120,6 +163,8 @@ export type BridgeApi = {
   listAccounts: () => Promise<NaverAccount[]>;
   addAccount: (input: { label: string; naverId: string; password?: string }) => Promise<NaverAccount[]>;
   removeAccount: (id: string) => Promise<NaverAccount[]>;
+  /** 계정 카드가 제출됐을 때. 평문 비밀번호는 여기서 메인으로만 간다. */
+  applyAccountChange: (input: AccountChangeInput) => Promise<AgentCardOutcome>;
 
   getSettings: () => Promise<PublicSettings>;
   setApiKey: (apiKey: string) => Promise<PublicSettings>;
@@ -140,6 +185,13 @@ export type BridgeApi = {
   logoutDabut: () => Promise<PublicSettings>;
   answerDabutLogin: (id: number, result: string) => Promise<boolean>;
   onDabutLoginRequest: (callback: (payload: { id: number; reason: string }) => void) => void;
+
+  loginExposure: (input: { loginId: string; password: string }) => Promise<PublicSettings>;
+  answerExposureLogin: (id: number, result: string) => Promise<boolean>;
+  onExposureLoginRequest: (callback: (payload: { id: number; reason: string }) => void) => void;
+
+  answerAccountCard: (id: number, result: string) => Promise<boolean>;
+  onAccountCardRequest: (callback: (payload: AccountCardRequest) => void) => void;
 
   getCdpInfo: () => Promise<{ port: number }>;
 

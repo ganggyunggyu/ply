@@ -2,14 +2,14 @@
 
 ## 1. 받은 파일로 설치
 
-[Releases](https://github.com/ganggyunggyu/gng-browser/releases) 에서 자기 플랫폼 파일을 받는다.
+[Releases](https://github.com/ganggyunggyu/ply/releases) 에서 자기 플랫폼 파일을 받는다.
 파일명에 버전이 들어가지 않으므로 새 버전이 나와도 이름은 그대로다.
 
 | 플랫폼 | 파일 |
 | --- | --- |
-| macOS (Apple Silicon) | `GNG-Browser-mac-arm64.dmg` |
-| macOS (Intel) | `GNG-Browser-mac-x64.dmg` |
-| Windows 10/11 64-bit | `GNG-Browser-Setup-win-x64.exe` |
+| macOS (Apple Silicon) | `Ply-mac-arm64.dmg` |
+| macOS (Intel) | `Ply-mac-x64.dmg` |
+| Windows 10/11 64-bit | `Ply-Setup-win-x64.exe` |
 
 어느 맥인지 모르겠으면 애플 메뉴 → **이 Mac에 관하여**. 칩 이름이 `Apple M...` 이면 Apple Silicon,
 `Intel...` 이면 Intel 이다. 반대쪽을 받으면 설치는 되고 실행만 안 된다.
@@ -17,11 +17,11 @@
 ### macOS
 
 1. 위 표에서 자기 칩에 맞는 `.dmg` 를 받아서 연다.
-2. `GNG Browser.app` 을 `응용 프로그램` 으로 드래그한다.
+2. `Ply.app` 을 `응용 프로그램` 으로 드래그한다.
 3. 서명을 붙이지 않아서 처음 열 때 막힌다. 격리 속성을 지우는 게 가장 확실하다.
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/GNG Browser.app"
+xattr -dr com.apple.quarantine "/Applications/Ply.app"
 ```
 
 터미널을 쓰기 싫으면 한 번 실행해서 차단 경고를 띄운 뒤,
@@ -30,7 +30,7 @@ macOS 15 부터는 우클릭 → 열기 우회가 서명 없는 앱에는 더 �
 
 ### Windows
 
-1. `GNG-Browser-Setup-win-x64.exe` 를 받아서 실행한다.
+1. `Ply-Setup-win-x64.exe` 를 받아서 실행한다.
 2. SmartScreen 경고가 뜨면 **추가 정보 → 실행** 을 누른다. 서명이 없어서 나오는 경고다.
 3. 설치 경로를 고를 수 있다. 기본값 그대로 두면 된다.
 
@@ -39,8 +39,8 @@ macOS 15 부터는 우클릭 → 열기 우회가 서명 없는 앱에는 더 �
 Node 22 이상이 필요하다.
 
 ```bash
-git clone <저장소 주소> gng-browser
-cd gng-browser
+git clone <저장소 주소> ply
+cd ply
 npm ci
 npm run dist
 ```
@@ -65,6 +65,9 @@ git tag v0.1.0 && git push origin v0.1.0
    키는 OS 키체인(macOS Keychain, Windows DPAPI)으로 암호화해서 그 기기에만 저장된다. 어디로도 전송되지 않는다.
 3. 에이전트 모델과 원고 모델을 고른다. 기본값은 MiniMax M2.5 와 DeepSeek V3.2 다.
 4. 네이버 계정을 추가한다. 비밀번호는 선택이다. 비워두면 로그인 창에서 직접 입력하게 된다.
+
+이전 이름의 앱에서 업데이트했다면 첫 실행 때 설정 파일만 자동으로 복사하고 옛 파일은 백업으로 남긴다.
+브라우저 세션과 쿠키는 복사하지 않으므로 각 프로필에서 네이버에 한 번씩 다시 로그인해야 한다.
 
 ## 4. 연동 서비스
 
@@ -96,9 +99,9 @@ git tag v0.1.0 && git push origin v0.1.0
 
 | 내용 | macOS | Windows |
 | --- | --- | --- |
-| 프로필 세션(쿠키) | `~/Library/Application Support/gng-browser` | `%APPDATA%\gng-browser` |
+| 프로필 세션(쿠키) | `~/Library/Application Support/ply` | `%APPDATA%\ply` |
 | 계정 / 설정 | 같은 폴더의 `config/` | 같은 폴더의 `config\` |
-| 프로필 목록 | `~/.gng-browser/profiles.json` | `%USERPROFILE%\.gng-browser\profiles.json` |
+| 프로필 목록 | `~/Library/Application Support/ply/config/profiles.json` | `%APPDATA%\ply\config\profiles.json` |
 
 비밀번호와 API 키는 `config/` 안에 암호문으로만 들어간다. 평문으로 저장하지 않는다.
 파일을 다른 기기로 복사해도 그쪽 키체인 키가 달라서 복호화되지 않는다. 새 기기에서는 다시 입력해야 한다.

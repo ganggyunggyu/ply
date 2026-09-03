@@ -13,6 +13,8 @@ export type ServiceUrls = Record<string, string>;
 export type PublicSettings = {
   hasApiKey: boolean;
   hasSchedulerToken: boolean;
+  /** 노출지기 쿠키 세션이 살아 있는가. 쿠키 값 자체는 절대 나가지 않는다. */
+  hasExposureCookie: boolean;
   schedulerLabel: string;
   agentModel: string;
   writerModel: string;
@@ -26,6 +28,8 @@ export type PublicSettings = {
 type StoredSettings = {
   apiKeyCipher?: string;
   schedulerTokenCipher?: string;
+  /** 노출지기 세션 쿠키 값. 비밀번호는 저장하지 않는다(쿠키가 7일짜리다). */
+  exposureCookieCipher?: string;
   schedulerLabel?: string;
   agentModel?: string;
   writerModel?: string;
@@ -76,6 +80,7 @@ const legacyEndpoints = (input: Record<string, unknown>): Partial<ServiceEndpoin
 export const toPublicSettings = ({
   apiKeyCipher,
   schedulerTokenCipher,
+  exposureCookieCipher,
   schedulerLabel,
   agentModel,
   writerModel,
@@ -84,6 +89,7 @@ export const toPublicSettings = ({
 }: StoredSettings): PublicSettings => ({
   hasApiKey: Boolean(apiKeyCipher),
   hasSchedulerToken: Boolean(schedulerTokenCipher),
+  hasExposureCookie: Boolean(exposureCookieCipher),
   schedulerLabel: schedulerLabel ?? '',
   agentModel: agentModel ?? DEFAULT_AGENT_MODEL,
   writerModel: writerModel ?? DEFAULT_WRITER_MODEL,
@@ -196,6 +202,24 @@ export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) 
     return schedulerTokenCipher ? crypto.decrypt(schedulerTokenCipher) : null;
   };
 
+  /**
+   * 노출지기 세션 쿠키. 빈 문자열을 주면 지운다.
+   * 401 을 만난 도구가 지우고 exposure_login 을 다시 부르게 하는 경로가 그것이다.
+   */
+  const setExposureCookie = (cookie: string) => {
+    if (cookie && !crypto.isAvailable()) throw new Error(ERRORS.safeStorageUnavailable);
+
+    const current = read();
+    write({ ...current, exposureCookieCipher: cookie ? crypto.encrypt(cookie) : undefined });
+
+    return get();
+  };
+
+  const readExposureCookie = () => {
+    const { exposureCookieCipher } = read();
+    return exposureCookieCipher ? crypto.decrypt(exposureCookieCipher) : null;
+  };
+
   const readApiKey = () => {
     const { apiKeyCipher } = read();
     return apiKeyCipher ? crypto.decrypt(apiKeyCipher) : null;
@@ -209,10 +233,12 @@ export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) 
     setServiceUrls,
     migrateServiceUrls,
     setSchedulerToken,
+    setExposureCookie,
     readEndpoints,
     readServiceUrls,
     readApiKey,
     readSchedulerToken,
+    readExposureCookie,
   };
 };
 

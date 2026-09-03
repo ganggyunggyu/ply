@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
  * site/index.html 의 RELEASE.files 와 README 의 표는 electron-builder 가 만드는
  * 파일명을 손으로 옮겨 적은 값이라 package.json 을 고치면 조용히 404 가 된다.
  * 특히 win 의 arch 를 하나라도 늘리면 electron-builder 가 `-${arch}` 를 통째로 지워
- * `GNG-Browser-Setup-win.exe` 를 뱉는다. 그 순간을 여기서 잡는다.
+ * `Ply-Setup-win.exe` 를 뱉는다. 그 순간을 여기서 잡는다.
  */
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');

@@ -1,0 +1,81 @@
+{
+  "source": "../21lab/blog-bot/scheduler-server/src/routes",
+  "generatedAt": "2026-09-03T09:32:27.947Z",
+  "routes": {
+    "/api/auth/login": [
+      "POST"
+    ],
+    "/api/auth/me": [
+      "GET"
+    ],
+    "/api/auth/signup": [
+      "POST"
+    ],
+    "/api/blog-accounts": [
+      "GET"
+    ],
+    "/api/blog-accounts/{id}/credential-check": [
+      "GET"
+    ],
+    "/api/content-pipelines": [
+      "GET",
+      "POST"
+    ],
+    "/api/content-pipelines/{key}": [
+      "DELETE"
+    ],
+    "/api/content-pipelines/blocks": [
+      "GET"
+    ],
+    "/api/queues/{accountId}/clean": [
+      "POST"
+    ],
+    "/api/queues/{accountId}/drain": [
+      "POST"
+    ],
+    "/api/queues/{accountId}/jobs": [
+      "GET"
+    ],
+    "/api/queues/{accountId}/retry": [
+      "POST"
+    ],
+    "/api/queues/dashboard": [
+      "GET"
+    ],
+    "/api/queues/drain-all": [
+      "POST"
+    ],
+    "/bot/auto-schedule": [
+      "POST"
+    ],
+    "/bot/auto-update": [
+      "POST"
+    ],
+    "/bot/image-replace": [
+      "POST"
+    ],
+    "/bot/link-update": [
+      "POST"
+    ],
+    "/bot/login-test": [
+      "POST"
+    ],
+    "/health": [
+      "GET"
+    ],
+    "/queues/stats": [
+      "GET"
+    ],
+    "/schedules": [
+      "GET",
+      "POST"
+    ],
+    "/schedules/{id}": [
+      "DELETE",
+      "GET"
+    ],
+    "/schedules/{id}/execute": [
+      "POST"
+    ]
+  }
+}

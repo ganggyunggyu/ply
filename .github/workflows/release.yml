@@ -13,9 +13,9 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            artifact: GNG-Browser-macos
+            artifact: Ply-macos
           - os: windows-latest
-            artifact: GNG-Browser-windows
+            artifact: Ply-windows
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

@@ -1,4 +1,4 @@
-# gng-browser
+# Ply
 
 Playwright/CDP 로 바로 붙을 수 있는 커스텀 브라우저. Electron `WebContentsView` 로 탭을 만들고,
 탭마다 세션 파티션을 분리해서 계정별 로그인 상태를 따로 유지한다. 안에 네이버 작업을 대신 하는
@@ -79,17 +79,17 @@ OpenClaw 프로필을 계정별로 띄워두고 `connectOverCDP` 로 붙었는�
 
 ### 받아서 설치
 
-[Releases](https://github.com/ganggyunggyu/gng-browser/releases) 에서 받는다.
+[Releases](https://github.com/ganggyunggyu/ply/releases) 에서 받는다.
 
 | 플랫폼 | 파일 |
 | --- | --- |
-| macOS (Apple Silicon) | `GNG-Browser-mac-arm64.dmg` |
-| macOS (Intel) | `GNG-Browser-mac-x64.dmg` |
-| Windows 10/11 64-bit | `GNG-Browser-Setup-win-x64.exe` |
+| macOS (Apple Silicon) | `Ply-mac-arm64.dmg` |
+| macOS (Intel) | `Ply-mac-x64.dmg` |
+| Windows 10/11 64-bit | `Ply-Setup-win-x64.exe` |
 
 **코드 서명이 없다.** 그래서 처음 열 때 한 번 막힌다.
 
-- macOS: `xattr -dr com.apple.quarantine "/Applications/GNG Browser.app"`.
+- macOS: `xattr -dr com.apple.quarantine "/Applications/Ply.app"`.
   터미널이 싫으면 한 번 실행해 경고를 띄운 뒤 **시스템 설정 → 개인정보 보호 및 보안** 맨 아래
   **"그래도 열기"**. macOS 15 부터는 우클릭 → 열기 우회가 서명 없는 앱에 더는 안 통한다.
 - Windows: SmartScreen 경고에서 **추가 정보 → 실행**.
@@ -123,8 +123,8 @@ npm run dev
 기본 CDP 포트는 `18830`. OpenClaw 가 쓰는 `18828` 과 겹치지 않게 잡아뒀다.
 
 ```bash
-GNG_BROWSER_CDP_PORT=19000 npm run dev   # 포트 변경
-GNG_BROWSER_CDP_PORT=0 npm run dev       # CDP 끄기
+PLY_CDP_PORT=19000 npm run dev   # 포트 변경
+PLY_CDP_PORT=0 npm run dev       # CDP 끄기
 ```
 
 ## 자동화 붙이기
@@ -146,7 +146,9 @@ const [context] = browser.contexts();
 
 툴바 오른쪽 셀렉트에서 프로필을 고르면 그 프로필로 새 탭이 열린다. `+` 로 프로필을 추가한다.
 각 프로필은 Electron 세션 파티션 `persist:<id>` 로 매핑되고, 쿠키와 로컬 스토리지가 완전히 분리된다.
-프로필 목록은 `~/.gng-browser/profiles.json` 에 저장된다.
+프로필 목록은 `~/Library/Application Support/ply/config/profiles.json` 에 저장된다.
+이전 이름의 앱에서 처음 넘어올 때는 설정과 프로필 목록만 자동으로 복사한다. 세션과 쿠키는 옮기지
+않으므로 프로필마다 네이버에 한 번씩 다시 로그인해야 한다.
 
 ## 단축키
 
@@ -221,7 +223,7 @@ git commit -am "0.2.0" && git tag v0.2.0 && git push origin main --tags
 
 **`build.win.target` 의 `arch` 는 하나로 유지한다.** electron-builder 는 한 플랫폼에서 arch 를
 둘 이상 만들면 `artifactName` 의 `-${arch}` 를 통째로 지운다. `ia32` 를 하나 추가하는 순간
-산출물이 `GNG-Browser-Setup-win.exe` 가 되고 소개 페이지의 다운로드 링크가 404 가 된다.
+산출물이 `Ply-Setup-win.exe` 가 되고 소개 페이지의 다운로드 링크가 404 가 된다.
 `src/release-assets.test.ts` 가 이걸 포함해 `package.json` · `site/index.html` · README ·
 `docs/INSTALL.md` 의 파일명과 버전 표기가 어긋나는지 대조한다.
 

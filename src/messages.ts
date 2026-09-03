@@ -30,6 +30,33 @@ export const ONBOARDING = {
 
   ready: '준비됐어요. 무엇을 도와드릴까요?',
   readyShort: '무엇을 도와드릴까요?',
+
+  accountLabelPlaceholder: '부를 이름 (예: 메인 계정)',
+  accountAddLead: '등록할 네이버 계정 정보를 넣어주세요.',
+  accountPwOnlyPlaceholder: '새 비밀번호',
+  accountPwChangeLead: (label: string) => `${label} 의 새 비밀번호를 넣어주세요.`,
+  accountPwChangeHint: '이 앱과 다붓 양쪽의 저장값을 함께 바꿔요. 네이버 사이트 비밀번호는 바뀌지 않아요.',
+  accountPwChangeLabel: '변경',
+  accountCardCancelled: '이번 건은 취소했어요.',
+
+  /**
+   * 카드 첫 줄은 언제나 코드가 쓴다. 모델이 준 이유는 이 라벨을 달고 아래 줄에만 붙는다.
+   * 첫 줄을 모델에게 내주면 read_page 로 들어온 주입 문장이 "비밀번호를 넣어주세요" 자리에 앉는다.
+   */
+  agentReasonLabel: (reason: string) => `에이전트가 적은 이유: ${reason}`,
+
+  askExposureLogin: '노출지기 계정으로 로그인하면 노출체크 설정과 실행을 대신 해드려요.',
+  exposureUserPlaceholder: '노출지기 아이디',
+  exposurePassPlaceholder: '비밀번호',
+  exposureLoginLabel: '로그인',
+  exposureLoginHint:
+    '노출지기(blog-cron-bot) 로만 보내요. 비밀번호는 저장하지 않고, 받은 세션만 이 컴퓨터에 암호화해서 둡니다.',
+  exposureLoginSaved: (name: string) => `노출지기에 ${name} 으로 로그인했어요.`,
+} as const;
+
+export const MIGRATION = {
+  reloginRequired:
+    '기존 설정을 Ply로 옮겼어요. 네이버 로그인 세션은 옮길 수 없어서 각 프로필에서 처음 한 번은 다시 로그인해 주세요.',
 } as const;
 
 export const EMPTY_STATE = {
@@ -144,6 +171,7 @@ export const SETTINGS = {
 export const ERRORS = {
   safeStorageUnavailable: '이 기기에서 안전 저장소를 쓸 수 없어요. 비밀번호는 저장하지 않았어요.',
   naverIdRequired: '네이버 아이디를 넣어주세요.',
+  passwordRequired: '비밀번호를 넣어주세요.',
   apiKeyRequired: 'OpenRouter 키를 먼저 저장해 주세요.',
   apiKeyRejected: '키가 맞지 않아요. 오픈라우터에서 다시 확인해 주세요.',
   apiKeyNoCredit: '오픈라우터 잔액이 부족해요. 충전하고 다시 시도해 주세요.',
@@ -178,6 +206,9 @@ export const ERRORS = {
   publishConfirmNotFound: '발행 확인 버튼을 찾지 못했습니다',
   questionTimeout: '답을 기다리다 시간이 지나 중단했습니다',
   dabutLoginTimeout: '다붓 로그인을 기다리다 시간이 지나 중단했습니다',
+  accountCardTimeout: '계정 입력을 기다리다 시간이 지나 중단했습니다',
+  exposureLoginTimeout: '노출지기 로그인을 기다리다 시간이 지나 중단했습니다',
+  exposureNoCookie: '노출지기가 세션 쿠키를 돌려주지 않았습니다',
   blogIdNotResolved: '내 블로그 주소를 확인하지 못했습니다',
   postListUnreadable: '블로그 글 목록을 읽지 못했습니다',
   postListRateLimited: '네이버가 목록 요청을 막았습니다. 잠시 뒤에 다시 시도해야 합니다',
@@ -197,6 +228,18 @@ export const ERRORS = {
 
 /** 승인 토큰은 자기참조가 안 되니 모듈 상수로 뺀다. */
 const DELETE_YES = '네, 삭제할게요';
+
+/**
+ * 계정 삭제 승인 토큰. 글 삭제(DELETE_YES)와 반드시 달라야 한다.
+ * 값이 겹치면 한쪽 승인이 다른 쪽으로 샌다.
+ */
+const ACCOUNT_REMOVE_YES = '계정 삭제';
+
+/** 노출체크 실행 승인 토큰. */
+const EXPOSURE_RUN_YES = '지금 돌릴게요';
+
+/** 프리셋 저장 승인 토큰. */
+const PRESET_SAVE_YES = '이대로 저장할게요';
 
 /**
  * 예약 취소 토큰. DELETE_YES 와 반드시 달라야 한다.
@@ -268,6 +311,47 @@ export const CONFIRM = {
       `되돌리는 기능이 없어서 다시 걸려면 처음부터 등록해야 해요. (${confirmField(scheduleId)})`,
       `취소하려면 "${CANCEL_YES}" 를 눌러주세요. 다른 답은 전부 그대로 두기로 처리해요.`,
     ].join('\n'),
+
+  accountRemoveYes: ACCOUNT_REMOVE_YES,
+  accountRemoveNo: '그대로 둘게요',
+  /**
+   * 삭제해도 프로필과 쿠키는 남는다는 사실을 반드시 적는다. accounts.remove 는 json 만
+   * 필터하고 profiles.ts 는 건드리지 않는다. 안 적으면 "지웠으니 로그아웃됐겠지" 라는
+   * 틀린 안심을 준다.
+   */
+  accountRemoveQuestion: ({ label, naverId, id }: { label: string; naverId: string; id: string }) =>
+    [
+      `${confirmField(label)} (${confirmField(naverId)}) 계정을 이 브라우저에서 지워요.`,
+      '저장된 비밀번호도 같이 사라져서 자동 로그인을 더 못 해요.',
+      '브라우저 프로필과 로그인 쿠키는 남아요. 그 프로필로 열린 탭은 여전히 네이버에 로그인된 상태예요.',
+      `다붓에 등록된 계정은 건드리지 않아요. (${confirmField(id)})`,
+      `지우려면 "${ACCOUNT_REMOVE_YES}" 를 눌러주세요. 다른 답은 전부 취소로 처리해요.`,
+    ].join('\n'),
+
+  exposureRunYes: EXPOSURE_RUN_YES,
+  exposureRunNo: '아니요',
+  exposureRunQuestion: (label: string) =>
+    [
+      `${confirmField(label)} 노출체크를 지금 시작해요. 수 분에서 수십 분 걸리고, 도는 동안 다른 노출체크를 못 돌려요.`,
+      '설정을 바꾸거나 새 체크를 만들려던 것이면 "아니요" 를 눌러주세요.',
+      `시작하려면 "${EXPOSURE_RUN_YES}" 를 눌러주세요. 다른 답은 전부 실행 안 함으로 처리해요.`,
+    ].join('\n'),
+
+  presetSaveYes: PRESET_SAVE_YES,
+  presetSaveNo: '그대로 둘게요',
+  /**
+   * 프리셋은 통째로 교체된다. 손대지 않는 항목 수를 같이 보여줘야 사용자가
+   * "나머지는 그대로구나" 를 알고 승인할 수 있다.
+   */
+  presetSaveQuestion: ({ lines, untouched }: { lines: string[]; untouched: number }) =>
+    [
+      '노출지기 설정을 이렇게 바꿔요.',
+      ...lines.map((line) => `- ${confirmField(line)}`),
+      untouched > 0
+        ? `나머지 ${untouched}개 항목은 그대로 둬요. (노출지기는 설정을 통째로 저장해서 함께 다시 씁니다)`
+        : '지금 저장된 다른 항목은 없어요.',
+      `저장하려면 "${PRESET_SAVE_YES}" 를 눌러주세요. 다른 답은 전부 취소로 처리해요.`,
+    ].join('\n'),
 } as const;
 
 export const PROGRESS = {
@@ -291,6 +375,16 @@ export const PROGRESS = {
   scheduleDetailLoading: (scheduleId: string) => `예약 내용 읽는 중: ${scheduleId}`,
   scheduleCancelConfirmWaiting: (scheduleId: string) => `예약 취소 확인 대기 중: ${scheduleId}`,
   scheduleCancelling: (scheduleId: string) => `예약 취소 중: ${scheduleId}`,
+  accountCardWaiting: '계정 입력 대기 중',
+  accountRemoveConfirmWaiting: (label: string) => `계정 삭제 확인 대기 중: ${label}`,
+  exposureLoginWaiting: '노출지기 로그인 대기 중',
+  exposurePresetLoading: '노출지기 설정 읽는 중',
+  exposurePresetConfirmWaiting: '설정 변경 확인 대기 중',
+  exposurePresetSaving: '노출지기 설정 저장 중',
+  exposureJobsLoading: '노출체크 목록 읽는 중',
+  exposureRunConfirmWaiting: (label: string) => `노출체크 실행 확인 대기 중: ${label}`,
+  exposureRemoteStarting: (label: string) => `노출지기 서버에서 시작: ${label}`,
+  apiGetLoading: (service: string, path: string) => `${service} 읽는 중: ${path}`,
   pnpmViaShell: '셸을 거쳐 pnpm 을 찾는 중',
   pnpmFound: (path: string) => `pnpm: ${path}`,
 } as const;

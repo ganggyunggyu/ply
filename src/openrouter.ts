@@ -1,10 +1,11 @@
 import axios, { type AxiosInstance } from 'axios';
+import { APP_NAME } from './constants';
 import { ERRORS } from './messages';
 import { TOOL_RESULTS as RESULT } from './prompts';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
-const APP_REFERER = 'https://github.com/ganggyunggyu/gng-browser';
-const APP_TITLE = 'GNG Browser';
+const APP_REFERER = 'https://github.com/ganggyunggyu/ply';
+const APP_TITLE = APP_NAME;
 
 export type ToolSpec = {
   name: string;

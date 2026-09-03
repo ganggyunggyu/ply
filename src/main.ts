@@ -1,10 +1,19 @@
-import { app, BaseWindow, WebContentsView, ipcMain, safeStorage, session, shell } from 'electron';
+import { app, BaseWindow, WebContentsView, dialog, ipcMain, safeStorage, session, shell } from 'electron';
+import { homedir } from 'os';
 import { join } from 'path';
 import { createAccountStore, type SecretCrypto } from './accounts';
-import type { AgentQuestion, QuestionField } from './bridge';
+import type {
+  AccountCardRequest,
+  AccountChangeInput,
+  AgentCardOutcome,
+  AgentQuestion,
+  DabutSyncStatus,
+  QuestionField,
+} from './bridge';
 import { createNaverTools, buildAgentSystemPrompt } from './agent-tools';
 import { kstToday } from './clock';
 import {
+  APP_NAME,
   DEFAULT_CDP_PORT,
   PANEL_WIDTH,
   PENDING_ANSWER_TIMEOUT_MS,
@@ -13,20 +22,27 @@ import {
   WINDOW_MIN_WIDTH,
   WINDOW_WIDTH,
 } from './constants';
+import { migrateLegacyConfig } from './config-migration';
 import { createPendingRegistry } from './pending';
 import { AGENT_MODELS, WRITER_MODELS } from './models';
 import { createOpenRouterClient, runAgentLoop, type AgentEvent, type ChatMessage } from './openrouter';
-import { addProfile, listProfiles, partitionOf, removeProfile } from './profiles';
-import { loginDabut } from './hub';
+import { createProfileStore, partitionOf } from './profiles';
+import {
+  findDabutNaverAccount,
+  listDabutNaverAccounts,
+  loginDabut,
+  updateDabutNaverAccountPassword,
+} from './hub';
+import { loginExposure } from './exposure-api';
 import { createSettingsStore } from './settings';
 import { createTabManager, type BrowserState, type TabManager } from './tabs';
-import { ERRORS } from './messages';
+import { ERRORS, MIGRATION } from './messages';
 import { applyServiceUrls } from './services';
 
-app.setName('gng-browser');
-app.setPath('userData', join(app.getPath('appData'), 'gng-browser'));
+app.setName(APP_NAME);
+app.setPath('userData', join(app.getPath('appData'), 'ply'));
 
-const cdpPort = Number(process.env.GNG_BROWSER_CDP_PORT ?? DEFAULT_CDP_PORT);
+const cdpPort = Number(process.env.PLY_CDP_PORT ?? DEFAULT_CDP_PORT);
 
 if (cdpPort > 0) {
   app.commandLine.appendSwitch('remote-debugging-port', String(cdpPort));
@@ -50,6 +66,8 @@ const electronCrypto: SecretCrypto = {
 };
 
 const configDir = () => join(app.getPath('userData'), 'config');
+const legacyConfigDir = () => join(app.getPath('appData'), 'gng-browser', 'config');
+const legacyProfileFile = () => join(homedir(), '.gng-browser', 'profiles.json');
 
 /** 예전 버전이 쓰던 파일. 지금은 settings.json 으로 한 번 옮기고 백업으로만 남긴다. */
 const LEGACY_SERVICE_URLS_FILE = 'services.json';
@@ -106,10 +124,29 @@ const dabutLogins = createPendingRegistry<string>({
   onTimeout: () => new Error(ERRORS.dabutLoginTimeout),
 });
 
+/** 노출지기 로그인 카드. 다붓과 같은 타이머를 탄다. */
+const exposureLogins = createPendingRegistry<string>({
+  timeoutMs: PENDING_ANSWER_TIMEOUT_MS,
+  onTimeout: () => new Error(ERRORS.exposureLoginTimeout),
+});
+
+/** 계정 추가·비번변경 카드. 여기도 실행 슬롯을 잡은 채 기다리므로 같은 타이머가 필요하다. */
+const accountCards = createPendingRegistry<string>({
+  timeoutMs: PENDING_ANSWER_TIMEOUT_MS,
+  onTimeout: () => new Error(ERRORS.accountCardTimeout),
+});
+
 /** 에이전트가 부르면 패널에 로그인 카드를 띄우고, 사용자가 끝낼 때까지 기다린다.
  *  비밀번호는 패널 → 메인 → 다붓 으로만 흐르고 모델은 보지 않는다. */
 const requestDabutLogin = (reason: string) =>
   dabutLogins.push((id) => sendToPanel('agent:dabut-login', { id, reason }));
+
+const requestExposureLogin = (reason: string) =>
+  exposureLogins.push((id) => sendToPanel('agent:exposure-login', { id, reason }));
+
+/** 계정 카드를 띄우고 기다린다. 요청에도 답에도 평문 비밀번호가 없다. */
+const requestAccountCard = (request: Omit<AccountCardRequest, 'id'>) =>
+  accountCards.push((id) => sendToPanel('agent:account-card', { id, ...request }));
 
 const pushQuestion = (payload: Omit<AgentQuestion, 'id'>) =>
   questions.push((id) => sendToPanel('agent:question', { id, ...payload }));
@@ -125,11 +162,88 @@ const accountStore = () =>
 const settingsStore = () =>
   createSettingsStore({ filePath: join(configDir(), 'settings.json'), crypto: electronCrypto });
 
+const profileStore = () => createProfileStore({ filePath: join(configDir(), 'profiles.json') });
+
 /** 서비스 주소는 저장소에 두지 않는다. 설정에 저장된 값으로 카탈로그를 덮는다. */
 const loadServiceUrls = () => {
   const store = settingsStore();
   store.migrateServiceUrls(join(configDir(), LEGACY_SERVICE_URLS_FILE));
   applyServiceUrls(store.readServiceUrls());
+};
+
+/**
+ * 계정 카드가 제출됐을 때 실제로 저장하는 곳.
+ *
+ * 평문 비밀번호는 여기까지만 온다. 반환값에도 로그에도 담지 않는다.
+ *
+ * change_password 가 두 곳을 함께 바꾼다. 이게 오늘 사고의 원인이었다 —
+ * 네이버에서 비번을 바꿔도 이 앱의 accounts.json 은 그대로였고, 다붓에 저장된 값도
+ * 따로 놀아서 예약 발행이 계속 옛 비번으로 로그인을 시도했다.
+ * 두 결과를 하나로 뭉치지 않고 따로 돌려준다. 절반만 바뀐 것을 반드시 보이게 한다.
+ */
+const applyAccountChange = async ({
+  mode,
+  accountId,
+  label,
+  naverId,
+  password,
+}: AccountChangeInput): Promise<AgentCardOutcome> => {
+  const store = accountStore();
+
+  if (mode === 'add') {
+    const created = store.add({ label, naverId, password: password || undefined });
+
+    return { status: 'account_added', id: created.id, label: created.label };
+  }
+
+  const updated = store.updatePassword(accountId, password);
+  if (!updated) return { status: 'cancelled' };
+
+  const settings = settingsStore();
+  const token = settings.readSchedulerToken();
+
+  if (!token) {
+    return {
+      status: 'account_password',
+      id: accountId,
+      label: updated.label,
+      local: true,
+      dabut: 'no_login',
+      dabutDetail: '',
+    };
+  }
+
+  const { dabutBaseUrl } = settings.readEndpoints();
+
+  const sync = async (): Promise<{ status: DabutSyncStatus; detail: string }> => {
+    try {
+      const accounts = await listDabutNaverAccounts(dabutBaseUrl, token);
+      const found = findDabutNaverAccount(accounts, updated.naverId);
+      if (!found) return { status: 'no_match', detail: '' };
+
+      const saved = await updateDabutNaverAccountPassword({
+        baseUrl: dabutBaseUrl,
+        token,
+        accountId: found.id,
+        password,
+      });
+
+      return { status: 'changed', detail: saved.name || found.name || found.loginId };
+    } catch (error) {
+      return { status: 'failed', detail: error instanceof Error ? error.message : String(error) };
+    }
+  };
+
+  const { status, detail } = await sync();
+
+  return {
+    status: 'account_password',
+    id: accountId,
+    label: updated.label,
+    local: true,
+    dabut: status,
+    dabutDetail: detail,
+  };
 };
 
 const broadcastState = (state: BrowserState) => {
@@ -158,7 +272,7 @@ const createWindow = () => {
     height: WINDOW_HEIGHT,
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'GNG Browser',
+    title: APP_NAME,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
   });
 
@@ -220,7 +334,7 @@ const createWindow = () => {
     try {
       tabManager?.createTab();
     } catch (error) {
-      console.error('[gng-browser] 첫 탭 생성 실패:', error);
+      console.error('[ply] 첫 탭 생성 실패:', error);
     }
   });
 
@@ -269,6 +383,12 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
     askUser,
     askUserForm,
     requestDabutLogin,
+    requestAccountCard,
+    requestExposureLogin,
+    getExposureCookie: () => settingsStore().readExposureCookie() ?? undefined,
+    clearExposureCookie: () => {
+      settingsStore().setExposureCookie('');
+    },
     signal: controller.signal,
   });
 
@@ -305,6 +425,8 @@ const cancelAgentRuns = () => {
   runControllers.forEach((controller) => controller.abort());
   questions.cancelAll(() => new Error(ERRORS.runCancelled));
   dabutLogins.cancelAll(() => new Error(ERRORS.runCancelled));
+  exposureLogins.cancelAll(() => new Error(ERRORS.runCancelled));
+  accountCards.cancelAll(() => new Error(ERRORS.runCancelled));
 
   return running > 0;
 };
@@ -324,12 +446,12 @@ const registerIpcHandlers = () => {
   ipcMain.handle('tab:forward', (_event, id: number) => tabManager?.goForward(id));
   ipcMain.handle('tab:reload', (_event, id: number) => tabManager?.reload(id));
 
-  ipcMain.handle('profile:list', () => listProfiles());
+  ipcMain.handle('profile:list', () => profileStore().list());
   ipcMain.handle('profile:add', (_event, label: string) => {
-    addProfile(label);
-    return listProfiles();
+    profileStore().add(label);
+    return profileStore().list();
   });
-  ipcMain.handle('profile:remove', (_event, profileId: string) => removeProfile(profileId));
+  ipcMain.handle('profile:remove', (_event, profileId: string) => profileStore().remove(profileId));
 
   ipcMain.handle('account:list', () => accountStore().list());
   ipcMain.handle('account:add', (_event, input: { label: string; naverId: string; password?: string }) => {
@@ -337,6 +459,12 @@ const registerIpcHandlers = () => {
     return accountStore().list();
   });
   ipcMain.handle('account:remove', (_event, id: string) => accountStore().remove(id));
+  ipcMain.handle('account:applyChange', (_event, input: AccountChangeInput) =>
+    applyAccountChange(input),
+  );
+  ipcMain.handle('agent:accountCardDone', (_event, id: number, result: string) =>
+    accountCards.settle(id, result),
+  );
 
   ipcMain.handle('settings:get', () => settingsStore().get());
   ipcMain.handle('settings:setApiKey', (_event, apiKey: string) => settingsStore().setApiKey(apiKey));
@@ -373,6 +501,21 @@ const registerIpcHandlers = () => {
     dabutLogins.settle(id, result),
   );
 
+  ipcMain.handle('service:exposureLogin', async (_event, input: { loginId: string; password: string }) => {
+    const store = settingsStore();
+    const { cookie } = await loginExposure({
+      baseUrl: store.readEndpoints().exposureDashboardUrl,
+      loginId: input.loginId,
+      password: input.password,
+    });
+
+    // 비밀번호는 저장하지 않는다. 쿠키가 7일짜리라 만료되면 카드가 다시 뜬다.
+    return store.setExposureCookie(cookie);
+  });
+  ipcMain.handle('agent:exposureLoginDone', (_event, id: number, result: string) =>
+    exposureLogins.settle(id, result),
+  );
+
   ipcMain.handle('services:setEndpoints', (_event, next: Record<string, string>) =>
     settingsStore().setEndpoints(next),
   );
@@ -388,11 +531,20 @@ const registerIpcHandlers = () => {
 };
 
 const handleReady = () => {
+  const migratedFiles = migrateLegacyConfig({
+    sourceDir: legacyConfigDir(),
+    targetDir: configDir(),
+    fallbackSources: { 'profiles.json': legacyProfileFile() },
+  });
   loadServiceUrls();
   registerIpcHandlers();
   createWindow();
 
-  if (cdpPort > 0) console.log(`[gng-browser] CDP 엔드포인트: http://127.0.0.1:${cdpPort}`);
+  if (migratedFiles.length > 0) {
+    void dialog.showMessageBox({ type: 'info', title: APP_NAME, message: MIGRATION.reloginRequired });
+  }
+
+  if (cdpPort > 0) console.log(`[ply] CDP 엔드포인트: http://127.0.0.1:${cdpPort}`);
 };
 
 const handleWindowAllClosed = () => {

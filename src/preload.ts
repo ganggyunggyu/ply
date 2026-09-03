@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AgentQuestion } from './bridge';
+import type { AccountCardRequest, AccountChangeInput, AgentQuestion } from './bridge';
 
 const browserApi = {
   getState: () => ipcRenderer.invoke('browser:state'),
@@ -20,6 +20,11 @@ const browserApi = {
   addAccount: (input: { label: string; naverId: string; password?: string }) =>
     ipcRenderer.invoke('account:add', input),
   removeAccount: (id: string) => ipcRenderer.invoke('account:remove', id),
+  applyAccountChange: (input: AccountChangeInput) => ipcRenderer.invoke('account:applyChange', input),
+  answerAccountCard: (id: number, result: string) =>
+    ipcRenderer.invoke('agent:accountCardDone', id, result),
+  onAccountCardRequest: (callback: (payload: AccountCardRequest) => void) =>
+    ipcRenderer.on('agent:account-card', (_event, payload: AccountCardRequest) => callback(payload)),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setApiKey: (apiKey: string) => ipcRenderer.invoke('settings:setApiKey', apiKey),
@@ -43,6 +48,14 @@ const browserApi = {
     ipcRenderer.invoke('agent:dabutLoginDone', id, result),
   onDabutLoginRequest: (callback: (payload: { id: number; reason: string }) => void) =>
     ipcRenderer.on('agent:dabut-login', (_event, payload: { id: number; reason: string }) =>
+      callback(payload),
+    ),
+  loginExposure: (input: { loginId: string; password: string }) =>
+    ipcRenderer.invoke('service:exposureLogin', input),
+  answerExposureLogin: (id: number, result: string) =>
+    ipcRenderer.invoke('agent:exposureLoginDone', id, result),
+  onExposureLoginRequest: (callback: (payload: { id: number; reason: string }) => void) =>
+    ipcRenderer.on('agent:exposure-login', (_event, payload: { id: number; reason: string }) =>
       callback(payload),
     ),
 

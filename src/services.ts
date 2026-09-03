@@ -14,6 +14,8 @@
  * 그쪽 주인은 hub.ts 의 ServiceEndpoints 하나뿐이다. 같은 주소를 두 군데 두지 않는다.
  */
 
+import { EXPOSURE_DASHBOARD_URL } from './constants';
+
 export type ServiceAuth =
   /** 로그인이 필요 없다 */
   | 'none'
@@ -35,7 +37,7 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
   {
     key: 'exposure-dashboard',
     name: '노출지기',
-    url: 'https://blog-cron-bot-production.up.railway.app',
+    url: EXPOSURE_DASHBOARD_URL,
     kind: 'ui',
     auth: 'cookie',
     description: '네이버 검색 노출체크 대시보드. 키워드 시트 관리와 실행 결과를 본다.',
