@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AccountCardRequest, AccountChangeInput, AgentQuestion } from './bridge';
+import type { AccountCardRequest, AccountChangeInput, AgentQuestion, ChromeImportSelection } from './bridge';
 
 const browserApi = {
   getState: () => ipcRenderer.invoke('browser:state'),
@@ -61,6 +61,12 @@ const browserApi = {
     ),
 
   getCdpInfo: () => ipcRenderer.invoke('cdp:info'),
+
+  listChromeProfiles: () => ipcRenderer.invoke('chrome:listProfiles'),
+  importFromChrome: (selection: ChromeImportSelection) => ipcRenderer.invoke('chrome:import', selection),
+  listBookmarks: () => ipcRenderer.invoke('bookmarks:list'),
+  listVisitHistory: () => ipcRenderer.invoke('history:list'),
+  onLibraryChanged: (callback: () => void) => ipcRenderer.on('library:changed', () => callback()),
 
   onState: (callback: (state: unknown) => void) =>
     ipcRenderer.on('browser:state', (_event, state: unknown) => callback(state)),

@@ -1,5 +1,6 @@
 import type { BrowserStateView, Profile, TabSnapshotView } from './bridge';
 import { SETTINGS, SIDEBAR } from './messages';
+import { createLibrary } from './sidebar/library';
 
 const api = window.gngBrowser;
 
@@ -14,6 +15,17 @@ const agentHeadEl = document.getElementById('agent-head') as HTMLButtonElement;
 const agentListEl = document.getElementById('agent-list') as HTMLUListElement;
 const agentCountEl = document.getElementById('agent-count') as HTMLSpanElement;
 const agentChevEl = document.getElementById('agent-chev') as HTMLSpanElement;
+const libTabBookmarksEl = document.getElementById('lib-tab-bookmarks') as HTMLButtonElement;
+const libTabHistoryEl = document.getElementById('lib-tab-history') as HTMLButtonElement;
+const libSearchEl = document.getElementById('lib-search') as HTMLInputElement;
+const libListEl = document.getElementById('lib-list') as HTMLUListElement;
+
+const library = createLibrary(api, {
+  tabBookmarks: libTabBookmarksEl,
+  tabHistory: libTabHistoryEl,
+  search: libSearchEl,
+  list: libListEl,
+});
 
 let state: BrowserStateView = { tabs: [], activeId: null };
 let profiles: Profile[] = [];
@@ -161,6 +173,9 @@ const applyStaticLabels = () => {
 
   set('lbl-tabs', SIDEBAR.groupTabs);
   set('lbl-agent-tabs', SIDEBAR.groupAgentTabs);
+  set('lib-tab-bookmarks', SIDEBAR.libBookmarks);
+  set('lib-tab-history', SIDEBAR.libHistory);
+  libSearchEl.placeholder = SIDEBAR.libSearchPlaceholder;
 
   newTabEl.setAttribute('aria-label', SIDEBAR.newTabLabel);
   newTabEl.title = SIDEBAR.newTabTitle;
@@ -179,8 +194,10 @@ const init = async () => {
 
   renderProfileMenu();
   render();
+  void library.load();
 
   api.onState(handleState);
+  api.onLibraryChanged(() => void library.load());
 };
 
 profileButtonEl.addEventListener('click', handleProfileToggle);

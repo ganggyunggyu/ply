@@ -265,3 +265,79 @@ body[data-running='true'] #agent-count::after {
   vertical-align: middle;
   animation: pulse-soft 1.2s var(--ease) infinite;
 }
+
+/* ---------- 라이브러리(북마크·방문기록) ---------- */
+
+#library-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.lib-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.lib-tab {
+  flex: 1;
+  height: 26px;
+  border: none;
+  border-radius: var(--r-sm, 7px);
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.lib-tab[data-active='true'] {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.lib-search {
+  height: 28px;
+  margin-bottom: 6px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--r-sm, 7px);
+  background: var(--rail);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+
+.lib-search:focus {
+  outline: none;
+}
+
+.lib-row {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--r-sm, 7px);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.lib-row:hover {
+  background: var(--hover);
+}
+
+.lib-empty {
+  padding: 8px;
+  color: var(--faint);
+  font-size: 11.5px;
+  list-style: none;
+}

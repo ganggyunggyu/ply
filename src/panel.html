@@ -86,6 +86,23 @@
           </div>
           <small id="account-hint" class="hint"></small>
         </div>
+
+        <div class="field" id="chrome-import">
+          <span id="lbl-chrome-import"></span>
+          <div class="row">
+            <select id="chrome-profile" class="select"></select>
+          </div>
+          <div class="row">
+            <select id="chrome-target" class="select"></select>
+          </div>
+          <label class="check"><input type="checkbox" id="chrome-cookies" checked /> <span id="lbl-chrome-cookies"></span></label>
+          <label class="check"><input type="checkbox" id="chrome-bookmarks" checked /> <span id="lbl-chrome-bookmarks"></span></label>
+          <label class="check"><input type="checkbox" id="chrome-history" checked /> <span id="lbl-chrome-history"></span></label>
+          <div class="row">
+            <button id="run-chrome-import" class="primary"></button>
+          </div>
+          <small id="chrome-import-hint" class="hint"></small>
+        </div>
       </section>
 
       <div id="log" class="log"></div>

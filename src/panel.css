@@ -119,6 +119,25 @@ textarea::placeholder {
   color: var(--faint);
 }
 
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.check input[type='checkbox'] {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
 small,
 .hint {
   display: block;

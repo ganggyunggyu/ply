@@ -197,11 +197,52 @@ export type BridgeApi = {
 
   getCdpInfo: () => Promise<{ port: number }>;
 
+  listChromeProfiles: () => Promise<{ supported: boolean; profiles: ChromeProfileView[] }>;
+  importFromChrome: (selection: ChromeImportSelection) => Promise<ChromeImportResult>;
+  listBookmarks: () => Promise<StoredBookmarkView[]>;
+  listVisitHistory: () => Promise<StoredVisitView[]>;
+  onLibraryChanged: (callback: () => void) => void;
+
   onState: (callback: (state: BrowserStateView) => void) => void;
   onAgentEvent: (callback: (event: AgentEventView) => void) => void;
   onAgentProgress: (callback: (message: string) => void) => void;
   onAgentRunning: (callback: (running: boolean) => void) => void;
   onAgentQuestion: (callback: (payload: AgentQuestion) => void) => void;
+};
+
+export type ChromeProfileView = {
+  folder: string;
+  label: string;
+};
+
+export type ChromeImportSelection = {
+  profileFolder: string;
+  /** 어느 Ply 프로필 세션으로 쿠키를 넣을지. 북마크/히스토리는 전역 저장이라 이 값과 무관하다. */
+  targetProfileId: string;
+  cookies: boolean;
+  bookmarks: boolean;
+  history: boolean;
+};
+
+export type ChromeImportResult = {
+  cookiesSet: number;
+  cookiesSkipped: number;
+  bookmarksAdded: number;
+  historyAdded: number;
+  /** 항목별로 완전히 실패한 경우의 사유. 쿠키 키체인 거부, 파일 없음 등. */
+  errors: string[];
+};
+
+export type StoredBookmarkView = {
+  name: string;
+  url: string;
+};
+
+export type StoredVisitView = {
+  url: string;
+  title: string;
+  visitCount: number;
+  lastVisit: number;
 };
 
 declare global {

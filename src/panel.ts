@@ -3,6 +3,7 @@ import {
   api,
   addAccountEl,
   agentModelEl,
+  runChromeImportEl,
   chipModelEl,
   chipServicesEl,
   composerEl,
@@ -48,6 +49,7 @@ import { handleSaveEndpoints } from './panel/endpoint-handlers';
 import { handleSchedulerLogin, handleSchedulerPassKeydown } from './panel/scheduler-handlers';
 import { handleViroTokenSave } from './panel/viro-handlers';
 import { handleAddAccount } from './panel/account-handlers';
+import { initChromeImport, handleRunChromeImport } from './panel/chrome-import-handlers';
 import { handleSubmit, handlePromptKeydown, handleStopClick } from './panel/composer-handlers';
 
 const init = async () => {
@@ -107,6 +109,8 @@ const init = async () => {
   api.onDabutLoginRequest(requestAgentDabutLogin);
   api.onExposureLoginRequest(requestAgentExposureLogin);
   api.onAccountCardRequest(requestAgentAccountCard);
+
+  void initChromeImport();
 };
 
 settingsToggleEl.addEventListener('click', handleSettingsToggle);
@@ -120,6 +124,7 @@ schLoginEl.addEventListener('click', handleSchedulerLogin);
 viroSaveEl.addEventListener('click', handleViroTokenSave);
 schPassEl.addEventListener('keydown', handleSchedulerPassKeydown);
 addAccountEl.addEventListener('click', handleAddAccount);
+runChromeImportEl.addEventListener('click', handleRunChromeImport);
 composerEl.addEventListener('submit', handleSubmit);
 promptEl.addEventListener('keydown', handlePromptKeydown);
 stopEl.addEventListener('click', handleStopClick);

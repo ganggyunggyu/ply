@@ -24,6 +24,12 @@ export const applyStaticLabels = () => {
   set('lbl-accounts', PANEL.accountsField);
   set('add-account', PANEL.accountAddLabel);
   set('account-hint', ONBOARDING.accountHint);
+  set('lbl-chrome-import', SETTINGS.chromeImportField);
+  set('lbl-chrome-cookies', SETTINGS.chromeImportCookies);
+  set('lbl-chrome-bookmarks', SETTINGS.chromeImportBookmarks);
+  set('lbl-chrome-history', SETTINGS.chromeImportHistory);
+  set('run-chrome-import', SETTINGS.chromeImportButton);
+  set('chrome-import-hint', SETTINGS.chromeImportHint);
   set('composer-hint', CHAT.composerHint);
   set('send', CHAT.sendLabel);
   set('stop', CHAT.stopLabel);

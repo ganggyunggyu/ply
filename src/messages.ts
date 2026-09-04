@@ -60,8 +60,8 @@ export const EMPTY_STATE = {
   title: '에이전트',
   samples: [
     'myblog01 계정으로 로그인해줘',
-    '강아지유치원 키워드로 글 2개 초안 만들어줘',
-    '마라탕탕 카페 가입하고 댓글 하나 달아줘',
+    '강아지유치원 키워드로 내일부터 3건 예약 발행 걸어줘',
+    '내 블로그 최근 글 노출 순위 확인해줘',
   ],
 } as const;
 
@@ -132,6 +132,10 @@ export const SIDEBAR = {
   newTabLabel: '새 탭',
   newTabTitle: '새 탭 (⌘T)',
   profileLabel: '프로필',
+  libBookmarks: '북마크',
+  libHistory: '방문기록',
+  libSearchPlaceholder: '북마크·방문기록 검색',
+  libEmpty: '없음. 설정에서 크롬 데이터를 가져와 보세요.',
 } as const;
 
 export const TOOLBAR = {
@@ -168,6 +172,20 @@ export const SETTINGS = {
   viroTokenPlaceholder: '바이로 에이전트 토큰',
   viroTokenSaveLabel: '저장',
   exposurePathMissing: '노출체크 저장소 경로를 입력해 주세요.',
+  chromeImportField: '크롬에서 가져오기',
+  chromeImportHint: '크롬 로그인 세션·북마크·방문기록을 가져와요. 저장된 비밀번호는 가져오지 않아요.',
+  chromeImportButton: '가져오기',
+  chromeImportProfilePrompt: '가져올 크롬 프로필',
+  chromeImportTargetPrompt: '어느 Ply 프로필로 로그인 세션을 넣을지',
+  chromeImportCookies: '로그인 세션(쿠키)',
+  chromeImportBookmarks: '북마크',
+  chromeImportHistory: '방문기록',
+  chromeImportUnsupported: '크롬 가져오기는 지금 macOS 에서만 됩니다.',
+  chromeImportNoProfiles: '설치된 크롬 프로필을 찾지 못했어요.',
+  chromeImportKeychainNotice: 'macOS 가 키체인 접근을 물으면 허용을 눌러 주세요.',
+  chromeImportRunning: '가져오는 중…',
+  chromeImportDone: (cookies: number, bookmarks: number, history: number) =>
+    `완료: 쿠키 ${cookies}건, 북마크 ${bookmarks}건, 방문기록 ${history}건`,
 } as const;
 
 export const ERRORS = {

@@ -34,4 +34,8 @@ for (const file of ['renderer.html', 'renderer.css', 'panel.html', 'panel.css', 
   copyFileSync(join(src, file), join(outdir, file));
 }
 
+// sql.js 의 wasm 바이너리. chrome-import/sqlite.ts 가 __dirname(=dist) 에서 직접 읽는다.
+// electron-builder files:["dist/**/*"] 가 이걸 패키징에 포함시킨다.
+copyFileSync(join(here, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'), join(outdir, 'sql-wasm.wasm'));
+
 console.log('[build] dist 생성 완료');

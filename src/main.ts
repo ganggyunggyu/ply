@@ -27,6 +27,11 @@ import { createPendingRegistry } from './pending';
 import { AGENT_MODELS, WRITER_MODELS } from './models';
 import { createOpenRouterClient, runAgentLoop, type AgentEvent, type ChatMessage } from './openrouter';
 import { createProfileStore, partitionOf } from './profiles';
+import { createBookmarkStore } from './store/bookmarks';
+import { createHistoryStore } from './store/history';
+import { detectChromeProfiles, isSupportedPlatform } from './chrome-import';
+import { runChromeImport } from './chrome-import/run-import';
+import type { ChromeImportSelection } from './bridge';
 import {
   findDabutNaverAccount,
   listDabutNaverAccounts,
@@ -163,6 +168,10 @@ const settingsStore = () =>
   createSettingsStore({ filePath: join(configDir(), 'settings.json'), crypto: electronCrypto });
 
 const profileStore = () => createProfileStore({ filePath: join(configDir(), 'profiles.json') });
+
+const bookmarkStore = () => createBookmarkStore({ filePath: join(configDir(), 'bookmarks.json') });
+
+const historyStore = () => createHistoryStore({ filePath: join(configDir(), 'history.json') });
 
 /** 서비스 주소는 저장소에 두지 않는다. 설정에 저장된 값으로 카탈로그를 덮는다. */
 const loadServiceUrls = () => {
@@ -532,6 +541,25 @@ const registerIpcHandlers = () => {
   });
 
   ipcMain.handle('cdp:info', () => ({ port: cdpPort }));
+
+  ipcMain.handle('chrome:listProfiles', () => ({
+    supported: isSupportedPlatform(),
+    profiles: isSupportedPlatform() ? detectChromeProfiles() : [],
+  }));
+  ipcMain.handle('chrome:import', async (_event, selection: ChromeImportSelection) => {
+    const result = await runChromeImport(selection, {
+      bookmarkStore: bookmarkStore(),
+      historyStore: historyStore(),
+      getSession: (profileId: string) => session.fromPartition(partitionOf(profileId)),
+    });
+
+    // 사이드바 라이브러리는 시작 때 한 번만 읽는다. 방금 들어온 북마크/방문기록을 보이려면 다시 읽게 한다.
+    if (result.bookmarksAdded > 0 || result.historyAdded > 0) sidebarView?.webContents.send('library:changed');
+
+    return result;
+  });
+  ipcMain.handle('bookmarks:list', () => bookmarkStore().list());
+  ipcMain.handle('history:list', () => historyStore().list());
 };
 
 const handleReady = () => {
