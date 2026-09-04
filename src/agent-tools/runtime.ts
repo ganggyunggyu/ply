@@ -14,6 +14,7 @@ import { createWithAgentTab } from './with-agent-tab';
 export const createToolRuntime = (context: ToolContext) => {
   const {
     accountStore,
+    shopAccountStore,
     tabManager,
     cdpPort,
     client,
@@ -66,6 +67,7 @@ export const createToolRuntime = (context: ToolContext) => {
 
   return {
     accountStore,
+    shopAccountStore,
     tabManager,
     cdpPort,
     client,

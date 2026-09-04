@@ -1,11 +1,13 @@
 import type { AxiosInstance } from 'axios';
 import type { AccountStore } from '../accounts';
+import type { ShopAccountStore } from '../shop-accounts';
 import type { AccountCardRequest, QuestionField } from '../bridge';
 import type { ServiceEndpoints } from '../hub';
 import type { TabManager } from '../tabs';
 
 export type ToolContext = {
   accountStore: AccountStore;
+  shopAccountStore: ShopAccountStore;
   tabManager: TabManager;
   cdpPort: number;
   client: AxiosInstance;

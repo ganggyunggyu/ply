@@ -25,7 +25,7 @@ myblog01 계정으로 강아지유치원 키워드 글 2개 초안 만들어줘
 
 ### 도구
 
-31개다.
+34개다.
 
 | 분류 | 도구 | 필요한 것 |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ myblog01 계정으로 강아지유치원 키워드 글 2개 초안 만들어줘
 | 원고 | `generate_manuscript` | OpenRouter 키 |
 | 블로그 | `publish_blog_post`, `list_my_posts`, `delete_blog_posts` | 없음 |
 | 카페 | `join_naver_cafe`, `write_cafe_comment` | 보안문자가 뜨면 블로그 스케줄러 |
+| 쇼핑몰 | `list_shop_accounts`, `shop_login`, `shop_visit_product` | Cafe24 쇼핑몰 계정 |
 | 탭·서비스 | `list_services`, `open_service`, `open_tab`, `check_services` | 없음 |
 | 조회 | `read_api_doc`, `api_get` | 서비스별 토큰 |
 | 원고 생성 백엔드 | `dabut_login`, `list_dabut_projects`, `generate_manuscript_dabut`, `update_dabut_project` | 원고 생성 백엔드 |

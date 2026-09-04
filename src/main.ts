@@ -389,6 +389,7 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
   const onEvent = (event: AgentEvent) => sendToPanel('agent:event', event);
   const tools = createNaverTools({
     accountStore: accountStore(),
+    shopAccountStore: shopAccountStore(),
     tabManager,
     cdpPort,
     client,

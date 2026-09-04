@@ -9,7 +9,8 @@ const CAFE24_ADMIN_LOGIN = 'https://eclogin.cafe24.com/Shop/';
 export const normalizeBaseUrl = (baseUrl: string): string => baseUrl.trim().replace(/\/+$/, '');
 
 export const loginUrl = (baseUrl: string) => `${normalizeBaseUrl(baseUrl)}/member/login.html`;
-export const joinAgreeUrl = (baseUrl: string) => `${normalizeBaseUrl(baseUrl)}/member/join.html`;
+export const agreementUrl = (baseUrl: string) => `${normalizeBaseUrl(baseUrl)}/member/agreement.html`;
+export const joinFormUrl = (baseUrl: string) => `${normalizeBaseUrl(baseUrl)}/member/join.html`;
 export const myShopBoardUrl = (baseUrl: string) => `${normalizeBaseUrl(baseUrl)}/myshop/board_list.html`;
 
 export const adminLoginUrl = () => CAFE24_ADMIN_LOGIN;

@@ -26,6 +26,7 @@ import { createUpdateExposurePresetTools } from './tools/update-exposure-preset'
 import { createReadApiDocTools } from './tools/read-api-doc';
 import { createApiGetTools } from './tools/api-get';
 import { createServiceNavTools } from './tools/service-nav';
+import { createShopTools } from './tools/shop';
 
 export const createNaverTools = (context: ToolContext): ToolSpec[] => {
   const runtime = createToolRuntime(context);
@@ -55,6 +56,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
   const [readApiDocTool] = createReadApiDocTools(runtime);
   const [apiGetTool] = createApiGetTools(runtime);
   const [listServices, openService, openTab] = createServiceNavTools(runtime);
+  const [listShopAccounts, shopLoginTool, shopVisitProduct] = createShopTools(runtime);
 
   return [
     askUserTool,
@@ -88,5 +90,8 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     listServices,
     openService,
     openTab,
+    listShopAccounts,
+    shopLoginTool,
+    shopVisitProduct,
   ];
 };

@@ -24,13 +24,19 @@ export const JOIN_CONFIRM_LAYER = '#ec_shop_confirm-checkingjoininfo_action';
 export const AGREE_ALL = '#sAgreeAllChecked';
 export const AGREE_NEXT = 'button.btnSubmitFix';
 
-/** 주문/결제 */
-export const BUY_SUBMIT = 'a.btnSubmit';
+/** 상품/주문/결제 */
+export const BUY_SUBMIT = 'a.btnSubmit[onclick*="product_submit"]';
 export const ORDER_ZIP_SEARCH = '#btn_search_rzipcode';
 export const ORDER_ADDR2 = '#raddr2';
 export const ORDER_BANK = '#bankaccount';
+export const ORDER_BANK_OPTION = '#bankaccount option';
 export const ORDER_NAME = '#pname';
 export const ORDER_PAYMENT = '#btn_payment';
+
+/** 카카오(구 다음) 우편번호 iframe. 도메인이 바뀌어 둘 다 본다. */
+export const POSTCODE_HOSTS = ['postcode.map.kakao.com', 'postcode.map.daum.net'];
+export const POSTCODE_INPUT = 'input#region_name, input.txt_search, input[type=text]';
+export const POSTCODE_RESULT = 'span.txt_address button.link_post, li button.link_post, .list_post button';
 
 /** 리뷰/QNA 공통 글쓰기 */
 export const BOARD_SUBJECT = '#subject';

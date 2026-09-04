@@ -83,4 +83,6 @@ export const PARAM_DESCRIPTIONS = {
   apiPath:
     "슬래시로 시작하는 경로. 물음표와 쿼리 문자열을 붙이지 않는다. 값은 query 로 따로 준다. 경로에 id 가 들어가면 그 자리에 실제 값을 넣는다",
   apiQuery: '쿼리 파라미터. 객체로 준다. 인코딩은 앱이 한다',
+  shopAccountId: 'list_shop_accounts 가 돌려준 쇼핑몰 계정 id',
+  productNo: '상품 번호. Cafe24 상품 주소 끝의 product_no 값이다',
 } as const;

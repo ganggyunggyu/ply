@@ -428,6 +428,13 @@ const createStubContext = (
         return [];
       },
     } as unknown as AccountStore,
+    shopAccountStore: {
+      list: () => [],
+      find: () => null,
+      remove: () => [],
+      add: () => ({ id: '', label: '', baseUrl: '', memberId: '', hasPassword: false }),
+      readPassword: () => null,
+    } as unknown as ToolContext['shopAccountStore'],
     tabManager: { createTab, closeTab, selectTab } as unknown as TabManager,
     cdpPort: 0,
     client: {} as AxiosInstance,
@@ -2878,10 +2885,10 @@ test('api_get 은 허용된 경로만 실제로 부른다', async (t) => {
   assert.equal(server.calls.some(({ url }) => url === '/api/preset'), true);
 });
 
-test('도구는 31개다', () => {
-  // AGENT.md 가 상한을 못박아 뒀다. 늘리려면 그 문장부터 다시 읽는다.
-  // 카페 가입·댓글 둘은 쓰기이고 브라우저를 몰아야 해서 api_get 으로 대신할 수 없다.
-  assert.equal(createNaverTools(createStubContext().context).length, 31);
+test('도구는 34개다', () => {
+  // 카페 가입·댓글, Cafe24 쇼핑몰(목록·로그인·상품이동)은 쓰기이거나 브라우저를 몰아야 해서
+  // api_get 으로 대신할 수 없다. 늘릴 때는 AGENT.md 의 상한 문장부터 다시 읽는다.
+  assert.equal(createNaverTools(createStubContext().context).length, 34);
 });
 
 test('로컬 실행도 확인 카드를 먼저 띄운다', async (t) => {

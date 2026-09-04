@@ -24,6 +24,13 @@ export const buildAgentSystemPrompt = ({ today }: { today: string }) =>
 
 카페를 특정할 때 cafeUrl(슬러그 주소)이 cafeId 보다 안정적이다. 둘 다 있으면 cafeUrl 을 준다.
 
+## Cafe24 쇼핑몰
+
+- 계정 목록: list_shop_accounts. 쇼핑몰 작업 전에 먼저 부른다. 여기서 나온 id 만 다른 도구에 넣는다.
+- 로그인: shop_login. 비밀번호는 저장소에서 앱이 꺼내 쓴다. 없으면 설정에서 넣으라고 안내한다.
+- 상품 이동: shop_visit_product. 상품 번호(productNo)로 연다.
+- 계정이 하나도 없으면 설정의 'Cafe24 쇼핑몰 계정' 카드에서 추가하라고 안내한다.
+
 ## 오늘 날짜
 
 오늘은 ${today} 다. 시간대는 KST(한국 표준시)다.
