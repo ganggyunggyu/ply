@@ -15,4 +15,8 @@ export const PLACEHOLDERS: Record<string, string> = {
   serviceUserPlaceholder: SETTINGS.serviceUserPlaceholder,
   servicePassPlaceholder: SETTINGS.servicePassPlaceholder,
   viroTokenPlaceholder: SETTINGS.viroTokenPlaceholder,
+  shopLabelPlaceholder: SETTINGS.shopLabelPlaceholder,
+  shopUrlPlaceholder: SETTINGS.shopUrlPlaceholder,
+  shopIdPlaceholder: SETTINGS.shopIdPlaceholder,
+  shopPwPlaceholder: SETTINGS.shopPwPlaceholder,
 };

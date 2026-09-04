@@ -203,6 +203,10 @@ export type BridgeApi = {
   listVisitHistory: () => Promise<StoredVisitView[]>;
   onLibraryChanged: (callback: () => void) => void;
   issueOpenRouterKey: () => Promise<IssueKeyResultView>;
+  listShopAccounts: () => Promise<ShopAccountView[]>;
+  addShopAccount: (input: AddShopAccountView) => Promise<ShopAccountView[]>;
+  removeShopAccount: (id: string) => Promise<ShopAccountView[]>;
+  loginShop: (id: string) => Promise<ShopLoginResultView>;
 
   onState: (callback: (state: BrowserStateView) => void) => void;
   onAgentEvent: (callback: (event: AgentEventView) => void) => void;
@@ -250,6 +254,26 @@ export type IssueKeyResultView =
   | { status: 'created'; key: string }
   | { status: 'login_required' }
   | { status: 'failed'; detail: string };
+
+export type ShopAccountView = {
+  id: string;
+  label: string;
+  baseUrl: string;
+  memberId: string;
+  hasPassword: boolean;
+};
+
+export type AddShopAccountView = {
+  label: string;
+  baseUrl: string;
+  memberId: string;
+  password?: string;
+};
+
+export type ShopLoginResultView = {
+  ok: boolean;
+  detail: string;
+};
 
 declare global {
   interface Window {

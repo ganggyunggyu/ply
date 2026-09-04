@@ -191,6 +191,16 @@ export const SETTINGS = {
   chromeImportRunning: '가져오는 중…',
   chromeImportDone: (cookies: number, bookmarks: number, history: number) =>
     `완료: 쿠키 ${cookies}건, 북마크 ${bookmarks}건, 방문기록 ${history}건`,
+  shopField: 'Cafe24 쇼핑몰 계정',
+  shopHint: '비밀번호는 암호화해 이 컴퓨터에만 둬요. 로그인은 저장한 계정으로만 해요.',
+  shopAddLabel: '추가',
+  shopEmpty: '등록된 쇼핑몰 계정 없음',
+  shopRemoveLabel: '삭제',
+  shopLoginLabel: '로그인',
+  shopLabelPlaceholder: '계정 이름 (예: 한려담원)',
+  shopUrlPlaceholder: '쇼핑몰 주소 (예: https://myshop.com)',
+  shopIdPlaceholder: '쇼핑몰 아이디',
+  shopPwPlaceholder: '비밀번호',
 } as const;
 
 export const ERRORS = {

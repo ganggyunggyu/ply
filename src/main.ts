@@ -29,6 +29,9 @@ import { createOpenRouterClient, runAgentLoop, type AgentEvent, type ChatMessage
 import { createProfileStore, partitionOf } from './profiles';
 import { createBookmarkStore } from './store/bookmarks';
 import { createHistoryStore } from './store/history';
+import { createShopAccountStore } from './shop-accounts';
+import { shopLogin, loginUrl } from './shop';
+import type { AddShopAccountInput } from './shop-accounts';
 import { detectChromeProfiles, isSupportedPlatform } from './chrome-import';
 import { runChromeImport } from './chrome-import/run-import';
 import { createWithAgentTab } from './agent-tools/with-agent-tab';
@@ -170,6 +173,9 @@ const settingsStore = () =>
   createSettingsStore({ filePath: join(configDir(), 'settings.json'), crypto: electronCrypto });
 
 const profileStore = () => createProfileStore({ filePath: join(configDir(), 'profiles.json') });
+
+const shopAccountStore = () =>
+  createShopAccountStore({ filePath: join(configDir(), 'shop-accounts.json'), crypto: electronCrypto });
 
 const bookmarkStore = () => createBookmarkStore({ filePath: join(configDir(), 'bookmarks.json') });
 
@@ -580,6 +586,28 @@ const registerIpcHandlers = () => {
   });
   ipcMain.handle('bookmarks:list', () => bookmarkStore().list());
   ipcMain.handle('history:list', () => historyStore().list());
+
+  ipcMain.handle('shop:list', () => shopAccountStore().list());
+  ipcMain.handle('shop:add', (_event, input: AddShopAccountInput) => {
+    shopAccountStore().add(input);
+    return shopAccountStore().list();
+  });
+  ipcMain.handle('shop:remove', (_event, id: string) => shopAccountStore().remove(id));
+  ipcMain.handle('shop:login', async (_event, id: string) => {
+    if (!tabManager) throw new Error(ERRORS.windowNotReady);
+
+    const store = shopAccountStore();
+    const account = store.find(id);
+    if (!account) return { ok: false, detail: '쇼핑몰 계정을 찾지 못했다' };
+
+    const password = store.readPassword(id);
+    if (!password) return { ok: false, detail: '저장된 비밀번호가 없다. 설정에서 다시 넣어 달라' };
+
+    const withAgentTab = createWithAgentTab({ tabManager, cdpPort });
+    return withAgentTab({ url: loginUrl(account.baseUrl), profileId: `shop-${id}` }, ({ page }) =>
+      shopLogin(page, { baseUrl: account.baseUrl, id: account.memberId, password }),
+    );
+  });
 };
 
 const handleReady = () => {

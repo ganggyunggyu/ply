@@ -2,6 +2,7 @@ import { CHAT, ONBOARDING, SETTINGS } from './messages';
 import {
   api,
   addAccountEl,
+  addShopEl,
   agentModelEl,
   runChromeImportEl,
   chipModelEl,
@@ -51,6 +52,7 @@ import { handleSchedulerLogin, handleSchedulerPassKeydown } from './panel/schedu
 import { handleViroTokenSave } from './panel/viro-handlers';
 import { handleAddAccount } from './panel/account-handlers';
 import { initChromeImport, handleRunChromeImport } from './panel/chrome-import-handlers';
+import { initShopAccounts, handleAddShop } from './panel/shop-handlers';
 import { handleSubmit, handlePromptKeydown, handleStopClick } from './panel/composer-handlers';
 
 const init = async () => {
@@ -112,6 +114,7 @@ const init = async () => {
   api.onAccountCardRequest(requestAgentAccountCard);
 
   void initChromeImport();
+  void initShopAccounts();
 };
 
 settingsToggleEl.addEventListener('click', handleSettingsToggle);
@@ -127,6 +130,7 @@ viroSaveEl.addEventListener('click', handleViroTokenSave);
 schPassEl.addEventListener('keydown', handleSchedulerPassKeydown);
 addAccountEl.addEventListener('click', handleAddAccount);
 runChromeImportEl.addEventListener('click', handleRunChromeImport);
+addShopEl.addEventListener('click', handleAddShop);
 composerEl.addEventListener('submit', handleSubmit);
 promptEl.addEventListener('keydown', handlePromptKeydown);
 stopEl.addEventListener('click', handleStopClick);

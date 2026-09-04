@@ -31,6 +31,9 @@ export const applyStaticLabels = () => {
   set('lbl-chrome-history', SETTINGS.chromeImportHistory);
   set('run-chrome-import', SETTINGS.chromeImportButton);
   set('chrome-import-hint', SETTINGS.chromeImportHint);
+  set('lbl-shop', SETTINGS.shopField);
+  set('add-shop', SETTINGS.shopAddLabel);
+  set('shop-hint', SETTINGS.shopHint);
   set('composer-hint', CHAT.composerHint);
   set('send', CHAT.sendLabel);
   set('stop', CHAT.stopLabel);
