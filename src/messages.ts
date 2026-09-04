@@ -12,6 +12,10 @@ export const ONBOARDING = {
   apiKeySaveLabel: '저장',
   apiKeyIssueLabel: '키 발급받기',
   apiKeySaved: '저장했어요.',
+  apiKeyIssuing: 'OpenRouter 에서 키를 발급받는 중…',
+  apiKeyIssueLogin: '먼저 열린 탭에서 OpenRouter 에 로그인해 주세요. 로그인 뒤 다시 눌러요.',
+  apiKeyIssued: '키를 발급받아 저장했어요.',
+  apiKeyIssueFailed: (detail: string) => `발급 실패: ${detail}`,
 
   askAccountAfterKey: '네이버 계정을 등록해 주세요.',
   askAccountOnStart: '네이버 계정을 등록하면 바로 시작할 수 있어요.',
@@ -59,9 +63,9 @@ export const MIGRATION = {
 export const EMPTY_STATE = {
   title: '에이전트',
   samples: [
-    'myblog01 계정으로 로그인해줘',
-    '강아지유치원 키워드로 내일부터 3건 예약 발행 걸어줘',
-    '내 블로그 최근 글 노출 순위 확인해줘',
+    'myblog01 로그인해줘',
+    '강아지유치원으로 글 3개 써서 내일 예약 걸어줘',
+    '요즘 내 글 몇 위인지 봐줘',
   ],
 } as const;
 
@@ -136,6 +140,7 @@ export const SIDEBAR = {
   libHistory: '방문기록',
   libSearchPlaceholder: '북마크·방문기록 검색',
   libEmpty: '없음. 설정에서 크롬 데이터를 가져와 보세요.',
+  generalSession: '일반 브라우징',
 } as const;
 
 export const TOOLBAR = {
@@ -191,6 +196,8 @@ export const SETTINGS = {
 export const ERRORS = {
   safeStorageUnavailable: '이 기기에서 안전 저장소를 쓸 수 없어요. 비밀번호는 저장하지 않았어요.',
   naverIdRequired: '네이버 아이디를 입력해 주세요.',
+  shopBaseUrlRequired: '쇼핑몰 주소를 입력해 주세요.',
+  shopMemberIdRequired: '쇼핑몰 아이디를 입력해 주세요.',
   passwordRequired: '비밀번호를 입력해 주세요.',
   apiKeyRequired: 'OpenRouter 키를 먼저 등록해 주세요.',
   apiKeyRejected: '키가 맞지 않아요. 오픈라우터에서 다시 확인해 주세요.',

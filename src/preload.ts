@@ -67,6 +67,7 @@ const browserApi = {
   listBookmarks: () => ipcRenderer.invoke('bookmarks:list'),
   listVisitHistory: () => ipcRenderer.invoke('history:list'),
   onLibraryChanged: (callback: () => void) => ipcRenderer.on('library:changed', () => callback()),
+  issueOpenRouterKey: () => ipcRenderer.invoke('openrouter:issueKey'),
 
   onState: (callback: (state: unknown) => void) =>
     ipcRenderer.on('browser:state', (_event, state: unknown) => callback(state)),

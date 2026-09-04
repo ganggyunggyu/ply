@@ -24,7 +24,8 @@ export const handleSubmit = async (event: Event) => {
 };
 
 export const handlePromptKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+  // 그냥 엔터가 전송이다. 줄바꿈이 필요하면 Shift+Enter 로 넣는다.
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     void handleSubmit(event);
   }

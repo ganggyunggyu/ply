@@ -1,6 +1,6 @@
 import { renderMarkdown } from '../markdown';
 import { CHAT, EMPTY_STATE } from '../messages';
-import { logEl, promptEl } from './dom';
+import { composerEl, logEl, promptEl } from './dom';
 
 export const clearEmptyState = () => {
   logEl.querySelector('.log-empty')?.remove();
@@ -18,9 +18,11 @@ export const renderEmptyState = () => {
     const item = document.createElement('li');
     item.textContent = sample;
 
+    // 예시를 누르면 채우기만 하지 않고 바로 보낸다. requestSubmit 이 컴포저의 submit 을 태워
+    // handleSubmit 을 그대로 통과시킨다(순환 import 없이).
     const handlePick = () => {
       promptEl.value = sample;
-      promptEl.focus();
+      composerEl.requestSubmit();
     };
 
     item.addEventListener('click', handlePick);

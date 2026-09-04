@@ -12,6 +12,7 @@ import {
   epExposureEl,
   epSchedulerEl,
   keyStatusEl,
+  issueKeyEl,
   logEl,
   promptEl,
   saveEndpointsEl,
@@ -43,7 +44,7 @@ import { requestAgentExposureLogin } from './panel/request-exposure-login';
 import { requestAgentAccountCard } from './panel/request-account-card';
 import { handleSettingsToggle, handleServiceChipClick } from './panel/settings-toggle';
 import { handleModelChipClick } from './panel/model-chip';
-import { handleSaveKey } from './panel/key-handlers';
+import { handleSaveKey, handleIssueKey } from './panel/key-handlers';
 import { handleAgentModelChange, handleWriterModelChange } from './panel/model-select-handlers';
 import { handleSaveEndpoints } from './panel/endpoint-handlers';
 import { handleSchedulerLogin, handleSchedulerPassKeydown } from './panel/scheduler-handlers';
@@ -117,6 +118,7 @@ settingsToggleEl.addEventListener('click', handleSettingsToggle);
 chipModelEl.addEventListener('click', handleModelChipClick);
 chipServicesEl.addEventListener('click', handleServiceChipClick);
 saveKeyEl.addEventListener('click', handleSaveKey);
+issueKeyEl.addEventListener('click', handleIssueKey);
 agentModelEl.addEventListener('change', handleAgentModelChange);
 writerModelEl.addEventListener('change', handleWriterModelChange);
 saveEndpointsEl.addEventListener('click', handleSaveEndpoints);

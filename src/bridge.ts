@@ -202,6 +202,7 @@ export type BridgeApi = {
   listBookmarks: () => Promise<StoredBookmarkView[]>;
   listVisitHistory: () => Promise<StoredVisitView[]>;
   onLibraryChanged: (callback: () => void) => void;
+  issueOpenRouterKey: () => Promise<IssueKeyResultView>;
 
   onState: (callback: (state: BrowserStateView) => void) => void;
   onAgentEvent: (callback: (event: AgentEventView) => void) => void;
@@ -244,6 +245,11 @@ export type StoredVisitView = {
   visitCount: number;
   lastVisit: number;
 };
+
+export type IssueKeyResultView =
+  | { status: 'created'; key: string }
+  | { status: 'login_required' }
+  | { status: 'failed'; detail: string };
 
 declare global {
   interface Window {

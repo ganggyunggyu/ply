@@ -12,6 +12,7 @@ export const applyStaticLabels = () => {
   set('settings-toggle', PANEL.settingsToggle);
   set('lbl-apikey', PANEL.apiKeyField);
   set('save-key', ONBOARDING.apiKeySaveLabel);
+  set('issue-key', ONBOARDING.apiKeyIssueLabel);
   set('lbl-agent-model', PANEL.agentModelField);
   set('lbl-writer-model', PANEL.writerModelField);
   set('lbl-endpoints', PANEL.endpointsField);

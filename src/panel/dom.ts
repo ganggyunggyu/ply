@@ -4,6 +4,7 @@ export const settingsEl = document.getElementById('settings') as HTMLElement;
 export const settingsToggleEl = document.getElementById('settings-toggle') as HTMLButtonElement;
 export const apiKeyEl = document.getElementById('api-key') as HTMLInputElement;
 export const saveKeyEl = document.getElementById('save-key') as HTMLButtonElement;
+export const issueKeyEl = document.getElementById('issue-key') as HTMLButtonElement;
 export const keyStatusEl = document.getElementById('key-status') as HTMLElement;
 export const agentModelEl = document.getElementById('agent-model') as HTMLSelectElement;
 export const writerModelEl = document.getElementById('writer-model') as HTMLSelectElement;

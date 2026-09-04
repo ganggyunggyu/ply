@@ -7,7 +7,7 @@ export type Profile = {
   label: string;
 };
 
-const DEFAULT_PROFILES: Profile[] = [{ id: 'default', label: '기본' }];
+const DEFAULT_PROFILES: Profile[] = [{ id: 'default', label: '일반 브라우징' }];
 
 export const partitionOf = (profileId: string) => `persist:${profileId}`;
 

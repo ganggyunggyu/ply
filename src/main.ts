@@ -31,6 +31,8 @@ import { createBookmarkStore } from './store/bookmarks';
 import { createHistoryStore } from './store/history';
 import { detectChromeProfiles, isSupportedPlatform } from './chrome-import';
 import { runChromeImport } from './chrome-import/run-import';
+import { createWithAgentTab } from './agent-tools/with-agent-tab';
+import { issueOpenRouterKey } from './openrouter-key';
 import type { ChromeImportSelection } from './bridge';
 import {
   findDabutNaverAccount,
@@ -478,6 +480,24 @@ const registerIpcHandlers = () => {
 
   ipcMain.handle('settings:get', () => settingsStore().get());
   ipcMain.handle('settings:setApiKey', (_event, apiKey: string) => settingsStore().setApiKey(apiKey));
+  ipcMain.handle('openrouter:issueKey', async () => {
+    if (!tabManager) throw new Error(ERRORS.windowNotReady);
+
+    const withAgentTab = createWithAgentTab({ tabManager, cdpPort });
+    const result = await withAgentTab(
+      { url: 'https://openrouter.ai/settings/keys', profileId: 'default' },
+      ({ page, keepTab }) =>
+        issueOpenRouterKey(page, 'Ply').then((outcome) => {
+          // 로그인이 필요하면 그 탭을 남겨 사용자가 바로 로그인하게 한다.
+          if (outcome.status === 'login_required') keepTab();
+          return outcome;
+        }),
+    );
+
+    if (result.status === 'created') settingsStore().setApiKey(result.key);
+
+    return result;
+  });
   ipcMain.handle('settings:setModels', (_event, models: { agentModel?: string; writerModel?: string }) =>
     settingsStore().setModels(models),
   );
