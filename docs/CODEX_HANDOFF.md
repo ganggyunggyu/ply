@@ -92,26 +92,28 @@ Ply = 겹·가닥(2-ply) + ply a trade(대신 일한다). 두 뜻이 겹치는 �
 → `scheduler-server` 에 `GET /api/meta/enums` 추가. `schedule.route.ts:46-49` 의 zod enum 을 그대로 반환.
 → 주의: 이 enum 이 `schedule.route.ts:47` 과 `schemas/dto.ts:26` **두 곳에 중복 정의**돼 있다. 같이 정리해라.
 
-### 2-2. 스케줄러 예약 수정 + 멱등성 지문
+### 2-2. 스케줄러 예약 수정 + 멱등성 지문  (지문은 2026-09-04 처리됨)
 `PATCH /schedules/:id` 가 없다. "예약 시간 바꿔줘" 가 불가능하다.
 그리고 `projectId` 가 멱등성 지문에서 빠져 있어(`schedule-idempotency.service.ts:28`, `:72-81`),
 키워드·계정·날짜가 같고 `project_id` 만 바꾼 재요청은 **새 예약이 안 만들어지고 옛 프로젝트로 발행된다.**
 응답은 `success:true` 로 오는 무음 오작동이다.
-→ `PATCH` 추가와 지문 수정을 **한 커밋에서** 같이 해라. 따로 고치면 안 된다.
+→ **지문은 고쳤다** (`4a271a2`). `projectId` 를 값이 있을 때만 키로 넣어서 이미 걸린 예약의
+지문은 그대로 둔다. 남은 것은 `PATCH /schedules/:id` 뿐이다.
 
 ### 2-3. 노출지기 프리셋 PATCH
 `PUT /api/preset` 이 전체 교체다. `targets` 만 보내면 나머지가 400 없이 전부 삭제된다.
 → `blog-cron-bot/dashboard/src/app/api/preset/route.ts` 에 `PATCH` 추가. deep-merge 후 `parsePreset` 통과.
 
-### 2-4. 바이로 댓글 잡 조회
+### 2-4. 바이로 댓글 잡 조회  (2026-09-04 완료)
 등록은 `POST /api/agent/prepare` op=`comment-job` 으로 되는데 상태 확인은 UI 뿐이다.
 `claim` 은 뽑으면 `running` 으로 바꾸는 부작용이 있어 조회용으로 못 쓴다.
-→ `cafe-bot/src/app/api/agent/jobs/route.ts` (목록) + `.../jobs/[jobId]/route.ts` (단건).
-`src/features/manual-comment-job/actions.ts:339` 의 `getManualCommentJobsAction` 재사용.
+→ 만들었다. 목록·단건에 더해 `/api/agent/cafes`, `/api/agent/worker`, 스캔 두 개도 같이 냈다.
+세션이 아니라 토큰으로 인증하므로 `job-queries.ts` 가 userId 를 인자로 받는다.
 
-### 2-5. 바이로 잡 취소
+### 2-5. 바이로 잡 취소  (2026-09-04 완료)
 잘못 등록한 댓글 잡을 되돌릴 방법이 없다. Mongo 직접 수정뿐.
-→ `POST /api/agent/jobs/[jobId]/cancel`. status enum(`src/shared/models/manual-comment-job.ts:8,105`)에 `'cancelled'` 추가.
+→ 만들었다. `pending` 일 때만 먹는 조건부 업데이트 한 번이라, 워커가 그 사이 집어가면
+409 로 거절한다. 먼저 읽고 나중에 쓰면 취소했다고 답해놓고 댓글이 달린다.
 
 ---
 
