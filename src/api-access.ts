@@ -10,7 +10,7 @@
  * 이 목록이 곧 권한이다. 여기 없는 경로는 서버에 존재해도 거부한다.
  */
 
-export const API_SERVICES = ['dabut', 'scheduler', 'exposure'] as const;
+export const API_SERVICES = ['dabut', 'scheduler', 'exposure', 'viro'] as const;
 
 export type ApiService = (typeof API_SERVICES)[number];
 
@@ -87,6 +87,16 @@ export const API_READ_ALLOWLIST: Readonly<Record<ApiService, readonly RegExp[]>>
     /^\/api\/outputs$/,
     /^\/api\/pm2$/,
     /^\/api\/accounts$/,
+  ],
+  /*
+   * 바이로는 화면 대신 API 로만 다룬다. 등록·취소 같은 쓰기는 여기 없다.
+   * api_get 은 이름 그대로 읽기 전용이고, 되돌릴 수 없는 것은 도구로 따로 낸다.
+   */
+  viro: [
+    /^\/api\/agent\/jobs$/,
+    new RegExp(`^/api/agent/jobs/${SEG}$`),
+    /^\/api\/agent\/cafes$/,
+    /^\/api\/agent\/worker$/,
   ],
 };
 

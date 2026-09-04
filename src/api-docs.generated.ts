@@ -9,7 +9,8 @@ export const API_DOC_TOPICS = [
   "limits",
   "manuscripts",
   "schedules",
-  "settings"
+  "settings",
+  "viro"
 ] as const;
 
 export type ApiDocTopic = (typeof API_DOC_TOPICS)[number];
@@ -266,8 +267,41 @@ export const API_DOCS: Record<ApiDocTopic, ApiDocPage> = {
       "에이전트가 못 하는 것": "OpenRouter 키 저장, 에이전트·원고 모델 변경, 연동 서버 주소 변경, 노출지기 저장소 경로\n지정, 브라우저 프로필 추가·삭제. 전부 패널 오른쪽 위 `설정` 에서 사용자가 직접 한다.\n\n이건 \"권한 밖\" 이라서가 아니라 도구를 안 만든 것이다. 한 번 넣으면 다시 안 바꾸는 값이라\n도구 하나를 쓸 값이 없다고 봤다. 사용자가 물으면 설정 어디를 열면 되는지 한 줄로 알린다.",
       "연동 주소 (도구가 부르는 곳)": "| 이름 | 기본값 |\n| --- | --- |\n| 다붓 백엔드 | `https://blog-analyzer.fly.dev` |\n| 블로그 스케줄러 | `https://21lab-scheduler.fly.dev` |\n| 노출지기 대시보드 | `https://blog-cron-bot-production.up.railway.app` |\n| 노출지기 저장소 경로 | 비어 있음 (컴퓨터마다 달라서 기본값을 두지 않는다) |\n\n노출지기 저장소 경로는 **로컬 실행**에만 쓴다. 노출지기에 로그인돼 있으면\n`run_exposure_check` 가 원격 실행을 먼저 쓰기 때문에 경로가 없어도 노출체크가 돈다.",
       "서비스 카탈로그 (탭으로 여는 화면)": "`open_service` 가 여는 주소들이다. 도구가 API 로 부르는 곳과는 다른 목록이고,\n주소가 비어 있는 항목은 프롬프트와 도구에서 통째로 빠진다. 주소를 지어내지 않는다.",
-      "api_get 이 부를 수 있는 서비스": "dabut, scheduler, exposure\n\n읽기 전용이다. 값을 바꾸는 요청은 보낼 수 없고, 경로는 허용목록에 있는 것만 통과한다.\n인증 토큰은 앱이 붙이므로 모델이 넣지 않는다."
+      "api_get 이 부를 수 있는 서비스": "dabut, scheduler, exposure, viro\n\n읽기 전용이다. 값을 바꾸는 요청은 보낼 수 없고, 경로는 허용목록에 있는 것만 통과한다.\n인증 토큰은 앱이 붙이므로 모델이 넣지 않는다."
     },
-    "body": "여기는 HTTP API 가 없다. 전부 이 앱의 로컬 설정이고 Electron IPC 로만 바뀐다.\n그래서 에이전트가 대신 바꿀 수 있는 것과 없는 것이 갈린다.\n\n## 어디에 저장되나\n\n`~/Library/Application Support/ply/config/`\n\n| 파일 | 내용 |\n| --- | --- |\n| `settings.json` | OpenRouter 키, 다붓 토큰, 노출지기 쿠키, 모델, 연동 주소 |\n| `accounts.json` | 네이버 계정과 암호화된 비밀번호 |\n| `profiles.json` | 브라우저 프로필 목록 |\n\n시크릿은 전부 safeStorage 로 암호화한다. 평문 폴백이 없다. 그래서 안전 저장소를 못 쓰는\n기기에서는 비밀번호와 토큰을 아예 저장하지 않고 그 사실을 그대로 알린다.\n\n## 에이전트가 대신 할 수 있는 것\n\n| 하려는 일 | 도구 |\n| --- | --- |\n| 다붓 로그인 | `dabut_login` — 카드가 뜬다 |\n| 노출지기 로그인 | `exposure_login` — 카드가 뜬다 |\n| 연동 서비스가 살아 있는지 | `check_services` |\n| 열 수 있는 화면 목록 | `list_services` / `open_service` |\n\n## 에이전트가 못 하는 것\n\nOpenRouter 키 저장, 에이전트·원고 모델 변경, 연동 서버 주소 변경, 노출지기 저장소 경로\n지정, 브라우저 프로필 추가·삭제. 전부 패널 오른쪽 위 `설정` 에서 사용자가 직접 한다.\n\n이건 \"권한 밖\" 이라서가 아니라 도구를 안 만든 것이다. 한 번 넣으면 다시 안 바꾸는 값이라\n도구 하나를 쓸 값이 없다고 봤다. 사용자가 물으면 설정 어디를 열면 되는지 한 줄로 알린다.\n\n## 연동 주소 (도구가 부르는 곳)\n\n| 이름 | 기본값 |\n| --- | --- |\n| 다붓 백엔드 | `https://blog-analyzer.fly.dev` |\n| 블로그 스케줄러 | `https://21lab-scheduler.fly.dev` |\n| 노출지기 대시보드 | `https://blog-cron-bot-production.up.railway.app` |\n| 노출지기 저장소 경로 | 비어 있음 (컴퓨터마다 달라서 기본값을 두지 않는다) |\n\n노출지기 저장소 경로는 **로컬 실행**에만 쓴다. 노출지기에 로그인돼 있으면\n`run_exposure_check` 가 원격 실행을 먼저 쓰기 때문에 경로가 없어도 노출체크가 돈다.\n\n## 서비스 카탈로그 (탭으로 여는 화면)\n\n`open_service` 가 여는 주소들이다. 도구가 API 로 부르는 곳과는 다른 목록이고,\n주소가 비어 있는 항목은 프롬프트와 도구에서 통째로 빠진다. 주소를 지어내지 않는다.\n\n## api_get 이 부를 수 있는 서비스\n\ndabut, scheduler, exposure\n\n읽기 전용이다. 값을 바꾸는 요청은 보낼 수 없고, 경로는 허용목록에 있는 것만 통과한다.\n인증 토큰은 앱이 붙이므로 모델이 넣지 않는다."
+    "body": "여기는 HTTP API 가 없다. 전부 이 앱의 로컬 설정이고 Electron IPC 로만 바뀐다.\n그래서 에이전트가 대신 바꿀 수 있는 것과 없는 것이 갈린다.\n\n## 어디에 저장되나\n\n`~/Library/Application Support/ply/config/`\n\n| 파일 | 내용 |\n| --- | --- |\n| `settings.json` | OpenRouter 키, 다붓 토큰, 노출지기 쿠키, 모델, 연동 주소 |\n| `accounts.json` | 네이버 계정과 암호화된 비밀번호 |\n| `profiles.json` | 브라우저 프로필 목록 |\n\n시크릿은 전부 safeStorage 로 암호화한다. 평문 폴백이 없다. 그래서 안전 저장소를 못 쓰는\n기기에서는 비밀번호와 토큰을 아예 저장하지 않고 그 사실을 그대로 알린다.\n\n## 에이전트가 대신 할 수 있는 것\n\n| 하려는 일 | 도구 |\n| --- | --- |\n| 다붓 로그인 | `dabut_login` — 카드가 뜬다 |\n| 노출지기 로그인 | `exposure_login` — 카드가 뜬다 |\n| 연동 서비스가 살아 있는지 | `check_services` |\n| 열 수 있는 화면 목록 | `list_services` / `open_service` |\n\n## 에이전트가 못 하는 것\n\nOpenRouter 키 저장, 에이전트·원고 모델 변경, 연동 서버 주소 변경, 노출지기 저장소 경로\n지정, 브라우저 프로필 추가·삭제. 전부 패널 오른쪽 위 `설정` 에서 사용자가 직접 한다.\n\n이건 \"권한 밖\" 이라서가 아니라 도구를 안 만든 것이다. 한 번 넣으면 다시 안 바꾸는 값이라\n도구 하나를 쓸 값이 없다고 봤다. 사용자가 물으면 설정 어디를 열면 되는지 한 줄로 알린다.\n\n## 연동 주소 (도구가 부르는 곳)\n\n| 이름 | 기본값 |\n| --- | --- |\n| 다붓 백엔드 | `https://blog-analyzer.fly.dev` |\n| 블로그 스케줄러 | `https://21lab-scheduler.fly.dev` |\n| 노출지기 대시보드 | `https://blog-cron-bot-production.up.railway.app` |\n| 노출지기 저장소 경로 | 비어 있음 (컴퓨터마다 달라서 기본값을 두지 않는다) |\n\n노출지기 저장소 경로는 **로컬 실행**에만 쓴다. 노출지기에 로그인돼 있으면\n`run_exposure_check` 가 원격 실행을 먼저 쓰기 때문에 경로가 없어도 노출체크가 돈다.\n\n## 서비스 카탈로그 (탭으로 여는 화면)\n\n`open_service` 가 여는 주소들이다. 도구가 API 로 부르는 곳과는 다른 목록이고,\n주소가 비어 있는 항목은 프롬프트와 도구에서 통째로 빠진다. 주소를 지어내지 않는다.\n\n## api_get 이 부를 수 있는 서비스\n\ndabut, scheduler, exposure, viro\n\n읽기 전용이다. 값을 바꾸는 요청은 보낼 수 없고, 경로는 허용목록에 있는 것만 통과한다.\n인증 토큰은 앱이 붙이므로 모델이 넣지 않는다."
+  },
+  "viro": {
+    "title": "바이로",
+    "triggers": [
+      "바이로",
+      "카페",
+      "카페봇",
+      "댓글 작업",
+      "댓글 잡",
+      "댓글 큐",
+      "카페 댓글",
+      "워커 상태",
+      "댓글 부족",
+      "댓글 교체"
+    ],
+    "routes": [
+      "viro GET /api/agent/jobs",
+      "viro GET /api/agent/jobs/{jobId}",
+      "viro GET /api/agent/cafes",
+      "viro GET /api/agent/worker"
+    ],
+    "tools": [
+      "api_get"
+    ],
+    "sections": {
+      "인증이 다르다": "다붓·스케줄러의 토큰이 여기서는 통하지 않는다. 바이로가 자기 DB 에 해시로 들고 있는\n별도의 에이전트 토큰을 쓴다. 저장돼 있지 않으면 `api_get` 이 인증 없음으로 답한다.\n그때는 사용자에게 바이로에서 토큰을 발급해 설정에 넣어달라고 말한다. 만들어 낼 수 없다.",
+      "댓글 작업 — 여기가 주력이다": "`GET /api/agent/jobs` → `{ jobs, count }`\n\n쿼리로 좁힌다. 셋 다 선택이다.\n\n| 쿼리 | 값 |\n|---|---|\n| `status` | `pending` `running` `done` `failed` `cancelled` |\n| `cafeId` | 카페 숫자 id |\n| `limit` | 기본 50, 최대 100 |\n\n모르는 `status` 를 주면 400 이 아니라 **조건에서 조용히 빠진다.** 필터가 걸린 줄 알고\n전체 목록을 좁은 결과로 읽지 않도록, 돌아온 `jobs[].status` 를 직접 확인한다.\n\n`GET /api/agent/jobs/{jobId}` → `{ job }`\n\n남의 작업은 403 이 아니라 **404 로 답한다.** 그 id 가 존재한다는 사실 자체를 숨긴다.\n그래서 404 는 \"없다\" 와 \"내 것이 아니다\" 를 구분해주지 않는다.\n\n작업 하나에는 `results[]`(단 댓글)와 `deleteResults[]`(지운 댓글)가 따로 담긴다.\n계정별 성공·실패가 각 항목의 `success`, `error` 에 있다.",
+      "작업 취소는 도구가 아니라 사람이 판단한다": "`POST /api/agent/jobs/{jobId}/cancel` 은 **허용목록에 없다.** `api_get` 은 읽기 전용이고,\n취소는 되돌릴 수 없어서 열어두지 않았다. 사용자가 취소를 원하면 화면에서 하도록 안내한다.\n\n취소는 `pending` 인 동안에만 먹는다. 워커가 이미 집어갔으면 409 로 거절되고,\n그 시점에는 댓글이 이미 달리는 중이다.",
+      "카페와 워커": "`GET /api/agent/cafes` → `{ cafes, count }` — 이 계정에 등록된 카페. `cafeId` 를 여기서 얻는다.\n\n`GET /api/agent/worker` → 로컬 에이전트 워커의 살아있음 여부. 큐가 밀려 있는데 작업이\n안 도는 이유는 대개 워커가 꺼져 있어서다. 잡 상태만 보고 \"처리 중\" 이라고 말하기 전에 확인한다.",
+      "스캔은 읽기가 아니다": "`POST /api/agent/scan/low-comment` 은 이름과 달리 **찾은 글에 댓글 작업을 큐에 넣는다.**\n`POST /api/agent/scan/replacement` 는 후보만 돌려주고, 큐에 넣는 것은 `.../replacement/queue` 다.\n셋 다 허용목록에 없다. 큐를 늘리는 일을 읽기 도구가 대신하지 않는다.",
+      "캡차는 여기서 풀지 않는다": "바이로의 캡차 풀이는 스케줄러 `POST /api/captcha/solve` 로 넘어갔다.\n`kind` 는 `login` `cafe-join` `cafe-create` 셋이고 `login` 만 `question` 이 필요하다.\n바이로에 캡차 관련 키를 찾아보지 않는다. 없다."
+    },
+    "body": "베이스 주소: `https://cafe-bot-two.vercel.app`\n\n네이버 카페 글·댓글 자동화. 화면은 열지 않는다. 서비스 목록에 없고 `api_get` 으로만 다룬다.\n\n## 인증이 다르다\n\n다붓·스케줄러의 토큰이 여기서는 통하지 않는다. 바이로가 자기 DB 에 해시로 들고 있는\n별도의 에이전트 토큰을 쓴다. 저장돼 있지 않으면 `api_get` 이 인증 없음으로 답한다.\n그때는 사용자에게 바이로에서 토큰을 발급해 설정에 넣어달라고 말한다. 만들어 낼 수 없다.\n\n## 댓글 작업 — 여기가 주력이다\n\n`GET /api/agent/jobs` → `{ jobs, count }`\n\n쿼리로 좁힌다. 셋 다 선택이다.\n\n| 쿼리 | 값 |\n|---|---|\n| `status` | `pending` `running` `done` `failed` `cancelled` |\n| `cafeId` | 카페 숫자 id |\n| `limit` | 기본 50, 최대 100 |\n\n모르는 `status` 를 주면 400 이 아니라 **조건에서 조용히 빠진다.** 필터가 걸린 줄 알고\n전체 목록을 좁은 결과로 읽지 않도록, 돌아온 `jobs[].status` 를 직접 확인한다.\n\n`GET /api/agent/jobs/{jobId}` → `{ job }`\n\n남의 작업은 403 이 아니라 **404 로 답한다.** 그 id 가 존재한다는 사실 자체를 숨긴다.\n그래서 404 는 \"없다\" 와 \"내 것이 아니다\" 를 구분해주지 않는다.\n\n작업 하나에는 `results[]`(단 댓글)와 `deleteResults[]`(지운 댓글)가 따로 담긴다.\n계정별 성공·실패가 각 항목의 `success`, `error` 에 있다.\n\n## 작업 취소는 도구가 아니라 사람이 판단한다\n\n`POST /api/agent/jobs/{jobId}/cancel` 은 **허용목록에 없다.** `api_get` 은 읽기 전용이고,\n취소는 되돌릴 수 없어서 열어두지 않았다. 사용자가 취소를 원하면 화면에서 하도록 안내한다.\n\n취소는 `pending` 인 동안에만 먹는다. 워커가 이미 집어갔으면 409 로 거절되고,\n그 시점에는 댓글이 이미 달리는 중이다.\n\n## 카페와 워커\n\n`GET /api/agent/cafes` → `{ cafes, count }` — 이 계정에 등록된 카페. `cafeId` 를 여기서 얻는다.\n\n`GET /api/agent/worker` → 로컬 에이전트 워커의 살아있음 여부. 큐가 밀려 있는데 작업이\n안 도는 이유는 대개 워커가 꺼져 있어서다. 잡 상태만 보고 \"처리 중\" 이라고 말하기 전에 확인한다.\n\n## 스캔은 읽기가 아니다\n\n`POST /api/agent/scan/low-comment` 은 이름과 달리 **찾은 글에 댓글 작업을 큐에 넣는다.**\n`POST /api/agent/scan/replacement` 는 후보만 돌려주고, 큐에 넣는 것은 `.../replacement/queue` 다.\n셋 다 허용목록에 없다. 큐를 늘리는 일을 읽기 도구가 대신하지 않는다.\n\n## 캡차는 여기서 풀지 않는다\n\n바이로의 캡차 풀이는 스케줄러 `POST /api/captcha/solve` 로 넘어갔다.\n`kind` 는 `login` `cafe-join` `cafe-create` 셋이고 `login` 만 `question` 이 필요하다.\n바이로에 캡차 관련 키를 찾아보지 않는다. 없다."
   }
 };

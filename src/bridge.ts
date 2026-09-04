@@ -34,6 +34,7 @@ export type ServiceCatalogItemView = {
 export type PublicSettings = {
   hasApiKey: boolean;
   hasSchedulerToken: boolean;
+  hasViroToken: boolean;
   hasExposureCookie: boolean;
   schedulerLabel: string;
   agentModel: string;
@@ -182,6 +183,7 @@ export type BridgeApi = {
   setEndpoints: (next: Partial<ServiceEndpointsView>) => Promise<PublicSettings>;
   setServiceUrls: (next: Record<string, string>) => Promise<PublicSettings>;
   loginDabut: (input: { username: string; password: string }) => Promise<PublicSettings>;
+  setViroToken: (token: string) => Promise<PublicSettings>;
   logoutDabut: () => Promise<PublicSettings>;
   answerDabutLogin: (id: number, result: string) => Promise<boolean>;
   onDabutLoginRequest: (callback: (payload: { id: number; reason: string }) => void) => void;

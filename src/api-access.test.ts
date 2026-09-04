@@ -13,8 +13,8 @@ import {
   redactSecrets,
 } from './api-access';
 
-test('서비스 이름은 세 개뿐이다', () => {
-  assert.deepEqual([...API_SERVICES], ['dabut', 'scheduler', 'exposure']);
+test('서비스 이름은 네 개뿐이다', () => {
+  assert.deepEqual([...API_SERVICES], ['dabut', 'scheduler', 'exposure', 'viro']);
   assert.equal(isApiService('dabut'), true);
   assert.equal(isApiService('openrouter'), false);
   assert.equal(isApiService(null), false);
@@ -176,4 +176,25 @@ test('불리언 깃발은 가리지 않는다', () => {
 
   assert.equal(redacted.has_password, true);
   assert.equal(redacted.password, REDACTED);
+});
+
+test('바이로 잡 조회 경로는 허용한다', () => {
+  assert.equal(isAllowedApiPath('viro', '/api/agent/jobs'), true);
+  assert.equal(isAllowedApiPath('viro', '/api/agent/jobs/68b1f0c2a1'), true);
+  assert.equal(isAllowedApiPath('viro', '/api/agent/cafes'), true);
+  assert.equal(isAllowedApiPath('viro', '/api/agent/worker'), true);
+});
+
+test('바이로 쓰기 경로는 api_get 으로 못 부른다', () => {
+  // 취소와 스캔은 되돌릴 수 없거나 큐를 늘린다. 읽기 도구가 열어줄 자리가 아니다.
+  assert.equal(isAllowedApiPath('viro', '/api/agent/jobs/68b1f0c2a1/cancel'), false);
+  assert.equal(isAllowedApiPath('viro', '/api/agent/scan/low-comment'), false);
+  assert.equal(isAllowedApiPath('viro', '/api/agent/prepare'), false);
+  assert.equal(isAllowedApiPath('viro', '/api/agent/captcha'), false);
+});
+
+test('서비스별 허용목록은 서로 새지 않는다', () => {
+  assert.equal(isAllowedApiPath('scheduler', '/api/agent/jobs'), false);
+  assert.equal(isAllowedApiPath('viro', '/schedules'), false);
+  assert.equal(isAllowedApiPath('dabut', '/api/agent/cafes'), false);
 });

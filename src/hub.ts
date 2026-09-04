@@ -16,6 +16,8 @@ export type ServiceEndpoints = {
    * 주소 리터럴은 constants.ts 하나뿐이고 카탈로그도 같은 값을 본다.
    */
   exposureDashboardUrl: string;
+  /** 바이로. 서비스 목록에 없고 api_get 으로만 다룬다. */
+  viroBaseUrl: string;
 };
 
 /**
@@ -30,6 +32,7 @@ export const DEFAULT_ENDPOINTS: ServiceEndpoints = {
   schedulerBaseUrl: 'https://21lab-scheduler.fly.dev',
   exposureBotDir: '',
   exposureDashboardUrl: EXPOSURE_DASHBOARD_URL,
+  viroBaseUrl: 'https://cafe-bot-two.vercel.app',
 };
 
 const bearer = (token?: string) => (token ? { Authorization: `Bearer ${token}` } : undefined);

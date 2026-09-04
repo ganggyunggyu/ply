@@ -13,6 +13,7 @@ export type ServiceUrls = Record<string, string>;
 export type PublicSettings = {
   hasApiKey: boolean;
   hasSchedulerToken: boolean;
+  hasViroToken: boolean;
   /** 노출지기 쿠키 세션이 살아 있는가. 쿠키 값 자체는 절대 나가지 않는다. */
   hasExposureCookie: boolean;
   schedulerLabel: string;
@@ -28,6 +29,7 @@ export type PublicSettings = {
 type StoredSettings = {
   apiKeyCipher?: string;
   schedulerTokenCipher?: string;
+  viroTokenCipher?: string;
   /** 노출지기 세션 쿠키 값. 비밀번호는 저장하지 않는다(쿠키가 7일짜리다). */
   exposureCookieCipher?: string;
   schedulerLabel?: string;
@@ -80,6 +82,7 @@ const legacyEndpoints = (input: Record<string, unknown>): Partial<ServiceEndpoin
 export const toPublicSettings = ({
   apiKeyCipher,
   schedulerTokenCipher,
+  viroTokenCipher,
   exposureCookieCipher,
   schedulerLabel,
   agentModel,
@@ -89,6 +92,7 @@ export const toPublicSettings = ({
 }: StoredSettings): PublicSettings => ({
   hasApiKey: Boolean(apiKeyCipher),
   hasSchedulerToken: Boolean(schedulerTokenCipher),
+  hasViroToken: Boolean(viroTokenCipher),
   hasExposureCookie: Boolean(exposureCookieCipher),
   schedulerLabel: schedulerLabel ?? '',
   agentModel: agentModel ?? DEFAULT_AGENT_MODEL,
@@ -214,6 +218,18 @@ export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) 
     return get();
   };
 
+  /** 바이로 에이전트 토큰. 다붓 JWT 와 별개로 바이로가 직접 발급한 값이다. */
+  const setViroToken = (token: string) => {
+    if (token && !crypto.isAvailable()) throw new Error(ERRORS.safeStorageUnavailable);
+
+    const current = read();
+    write({ ...current, viroTokenCipher: token ? crypto.encrypt(token) : undefined });
+
+    return get();
+  };
+
+  const readViroToken = () => decryptOrNull(crypto, read().viroTokenCipher);
+
   const readSchedulerToken = () => {
     const { schedulerTokenCipher } = read();
     return decryptOrNull(crypto, schedulerTokenCipher);
@@ -250,11 +266,13 @@ export const createSettingsStore = ({ filePath, crypto }: SettingsStoreOptions) 
     setServiceUrls,
     migrateServiceUrls,
     setSchedulerToken,
+    setViroToken,
     setExposureCookie,
     readEndpoints,
     readServiceUrls,
     readApiKey,
     readSchedulerToken,
+    readViroToken,
     readExposureCookie,
   };
 };

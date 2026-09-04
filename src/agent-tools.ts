@@ -117,6 +117,7 @@ export type ToolContext = {
   /** 실행 중에 바뀔 수 있으므로 값이 아니라 게터로 받는다. */
   getEndpoints: () => ServiceEndpoints;
   getSchedulerToken: () => string | undefined;
+  getViroToken: () => string | undefined;
   getCookieNames: (profileId: string) => Promise<string[]>;
   onProgress: (message: string) => void;
   askUser: (question: string, choices?: string[]) => Promise<string>;
@@ -999,6 +1000,7 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
     writerModel,
     getEndpoints,
     getSchedulerToken,
+    getViroToken,
     getCookieNames,
     onProgress,
     askUser,
@@ -1738,6 +1740,13 @@ export const createNaverTools = (context: ToolContext): ToolSpec[] => {
 
         baseUrl = session.baseUrl;
         auth = { kind: 'cookie', cookie: session.cookie };
+      } else if (name === 'viro') {
+        // 바이로는 자기가 발급한 에이전트 토큰을 쓴다. 다붓 JWT 로는 통하지 않는다.
+        const token = getViroToken();
+        if (!token) return RESULT.apiGetNoAuth(name);
+
+        baseUrl = endpoints.viroBaseUrl;
+        auth = { kind: 'bearer', token };
       } else {
         const token = getSchedulerToken();
         if (!token) return RESULT.apiGetNoAuth(name);

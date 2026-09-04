@@ -55,6 +55,7 @@ const list = (values) => values.join(', ');
 const PLACEHOLDERS = {
   dabutBaseUrl: readStringField(hub, 'dabutBaseUrl'),
   schedulerBaseUrl: readStringField(hub, 'schedulerBaseUrl'),
+  viroBaseUrl: readStringField(hub, 'viroBaseUrl'),
   exposureDashboardUrl: readStringConst(constants, 'EXPOSURE_DASHBOARD_URL'),
   manuscriptTypes: list(readStringArray(enums, 'MANUSCRIPT_TYPES')),
   imageSources: list(readStringArray(enums, 'IMAGE_SOURCES')),

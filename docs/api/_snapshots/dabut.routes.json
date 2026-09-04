@@ -1,6 +1,6 @@
 {
   "source": "https://blog-analyzer.fly.dev/openapi.json",
-  "generatedAt": "2026-09-03T09:32:27.919Z",
+  "generatedAt": "2026-09-04T07:10:56.063Z",
   "routes": {
     "/analysis/sub-title": [
       "POST"

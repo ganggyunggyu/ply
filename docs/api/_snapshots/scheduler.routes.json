@@ -1,6 +1,6 @@
 {
   "source": "../21lab/blog-bot/scheduler-server/src/routes",
-  "generatedAt": "2026-09-03T09:32:27.947Z",
+  "generatedAt": "2026-09-04T07:10:56.082Z",
   "routes": {
     "/api/auth/login": [
       "POST"
@@ -16,6 +16,12 @@
     ],
     "/api/blog-accounts/{id}/credential-check": [
       "GET"
+    ],
+    "/api/captcha/kinds": [
+      "GET"
+    ],
+    "/api/captcha/solve": [
+      "POST"
     ],
     "/api/content-pipelines": [
       "GET",

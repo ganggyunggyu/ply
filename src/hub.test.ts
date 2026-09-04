@@ -72,7 +72,7 @@ test('저장소의 exposure: 스크립트만 작업 목록에 올린다', () => 
     'exposure:package': 'node x',
     'exposure:some-client': 'node x',
     build: 'node x',
-    'cafe-bot:published:exposure': 'node x',
+    'image-generator:published:exposure': 'node x',
   });
 
   assert.deepEqual(

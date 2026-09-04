@@ -372,6 +372,7 @@ const createStubContext = (
   answer: () => Promise<string> = async () => CONFIRM.deleteYes,
   formAnswer: () => Promise<string> = async () => '{}',
   schedulerToken: string | undefined = undefined,
+  viroToken: string | undefined = undefined,
 ) => {
   const spy = {
     askUserCalls: [] as string[],
@@ -436,8 +437,10 @@ const createStubContext = (
       schedulerBaseUrl: '',
       exposureBotDir: '',
       exposureDashboardUrl: '',
+      viroBaseUrl: '',
     }),
     getSchedulerToken: () => schedulerToken,
+    getViroToken: () => viroToken,
     getCookieNames: async () => cookieNames,
     onProgress: () => undefined,
     askUser,
@@ -686,13 +689,13 @@ test('list_services 는 기본값이 있는 서비스를 전부 준다', async (
 
 test('list_services 는 사용자가 넣은 주소를 우선한다', async (t) => {
   t.after(() => applyServiceUrls({}));
-  applyServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+  applyServiceUrls({ 'image-generator': 'https://image.internal' });
 
   const { context } = createStubContext();
   const output = await findTool(createNaverTools(context), 'list_services').run({});
   const rows = JSON.parse(output) as { key: string; url: string }[];
 
-  assert.equal(rows.find(({ key }) => key === 'cafe-bot')?.url, 'https://cafe.internal');
+  assert.equal(rows.find(({ key }) => key === 'image-generator')?.url, 'https://image.internal');
 });
 
 test('시스템 프롬프트는 지어낸 주소를 싣지 않는다', async (t) => {
@@ -701,10 +704,10 @@ test('시스템 프롬프트는 지어낸 주소를 싣지 않는다', async (t)
   applyServiceUrls({});
   assert.equal(buildAgentSystemPrompt({ today: TODAY }).includes('example.com'), false);
 
-  applyServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+  applyServiceUrls({ 'image-generator': 'https://image.internal' });
   const prompt = buildAgentSystemPrompt({ today: TODAY });
 
-  assert.ok(prompt.includes('https://cafe.internal'));
+  assert.ok(prompt.includes('https://image.internal'));
   assert.equal(prompt.includes('example.com'), false);
 });
 
@@ -2429,6 +2432,7 @@ test('노출체크 실행 거절은 실패가 아니라고 알린다', async () 
     schedulerBaseUrl: '',
     exposureBotDir: '/tmp/does-not-exist-gng',
     exposureDashboardUrl: '',
+    viroBaseUrl: '',
   });
 
   const tools = createNaverTools(context);
@@ -2896,6 +2900,7 @@ test('로컬 실행도 확인 카드를 먼저 띄운다', async (t) => {
     schedulerBaseUrl: '',
     exposureBotDir: dir,
     exposureDashboardUrl: '',
+    viroBaseUrl: '',
   });
 
   const output = await findTool(createNaverTools(context), 'run_exposure_check').run({ job: 'cafe' });

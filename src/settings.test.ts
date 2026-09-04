@@ -139,27 +139,27 @@ test('서비스 주소 기본값은 빈 오버라이드와 코드 주소를 준�
 
 test('서비스 주소를 저장하면 해석된 카탈로그에 반영된다', () => {
   const { store } = makeStore();
-  const { serviceUrls, services } = store.setServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+  const { serviceUrls, services } = store.setServiceUrls({ 'image-generator': 'https://image.internal' });
 
-  assert.equal(serviceUrls['cafe-bot'], 'https://cafe.internal');
-  assert.equal(urlOf(services, 'cafe-bot'), 'https://cafe.internal');
-  assert.equal(services.find((s) => s.key === 'cafe-bot')?.custom, true);
+  assert.equal(serviceUrls['image-generator'], 'https://image.internal');
+  assert.equal(urlOf(services, 'image-generator'), 'https://image.internal');
+  assert.equal(services.find((s) => s.key === 'image-generator')?.custom, true);
 
   services
-    .filter(({ key }) => key !== 'cafe-bot')
+    .filter(({ key }) => key !== 'image-generator')
     .forEach(({ key, url }) => assert.equal(url, defaultUrlOf(key)));
 
-  assert.deepEqual(store.readServiceUrls(), { 'cafe-bot': 'https://cafe.internal' });
+  assert.deepEqual(store.readServiceUrls(), { 'image-generator': 'https://image.internal' });
 });
 
 test('서비스 주소를 부분 저장해도 병합되고 다른 설정을 건드리지 않는다', () => {
   const { store } = makeStore();
   store.setApiKey('sk-or-v1-secret');
-  store.setServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+  store.setServiceUrls({ 'image-generator': 'https://image.internal' });
 
   const { serviceUrls, endpoints } = store.setServiceUrls({ 'sheet-app': 'https://sheet.internal' });
 
-  assert.equal(serviceUrls['cafe-bot'], 'https://cafe.internal');
+  assert.equal(serviceUrls['image-generator'], 'https://image.internal');
   assert.equal(serviceUrls['sheet-app'], 'https://sheet.internal');
   assert.equal(store.readApiKey(), 'sk-or-v1-secret');
   assert.deepEqual(endpoints, DEFAULT_ENDPOINTS);
@@ -167,12 +167,12 @@ test('서비스 주소를 부분 저장해도 병합되고 다른 설정을 건�
 
 test('빈 값은 오버라이드를 지우고 기본값으로 되돌린다', () => {
   const { store } = makeStore();
-  store.setServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
+  store.setServiceUrls({ 'image-generator': 'https://image.internal' });
 
-  const { serviceUrls, services } = store.setServiceUrls({ 'cafe-bot': '   ' });
+  const { serviceUrls, services } = store.setServiceUrls({ 'image-generator': '   ' });
 
-  assert.equal(Object.hasOwn(serviceUrls, 'cafe-bot'), false);
-  assert.equal(urlOf(services, 'cafe-bot'), defaultUrlOf('cafe-bot'));
+  assert.equal(Object.hasOwn(serviceUrls, 'image-generator'), false);
+  assert.equal(urlOf(services, 'image-generator'), defaultUrlOf('image-generator'));
   assert.deepEqual(serviceUrls, {});
 });
 
@@ -186,30 +186,30 @@ test('모르는 서비스 key 는 저장하지 않는다', () => {
 
 test('예전 services.json 을 설정으로 옮기고 파일은 남긴다', () => {
   const { store, dir, filePath } = makeStore();
-  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'image-generator': 'https://legacy.internal' }));
 
   const { serviceUrls, services } = store.migrateServiceUrls(legacyPath);
 
-  assert.equal(serviceUrls['cafe-bot'], 'https://legacy.internal');
-  assert.equal(urlOf(services, 'cafe-bot'), 'https://legacy.internal');
+  assert.equal(serviceUrls['image-generator'], 'https://legacy.internal');
+  assert.equal(urlOf(services, 'image-generator'), 'https://legacy.internal');
   assert.equal(existsSync(legacyPath), true);
   assert.equal(readFileSync(filePath, 'utf-8').includes('https://legacy.internal'), true);
-  assert.equal(store.get().serviceUrls['cafe-bot'], 'https://legacy.internal');
+  assert.equal(store.get().serviceUrls['image-generator'], 'https://legacy.internal');
 });
 
 test('이미 저장된 주소가 있으면 이관하지 않는다', () => {
   const { store, dir } = makeStore();
-  store.setServiceUrls({ 'cafe-bot': 'https://mine.internal' });
-  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+  store.setServiceUrls({ 'image-generator': 'https://mine.internal' });
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'image-generator': 'https://legacy.internal' }));
 
-  assert.equal(store.migrateServiceUrls(legacyPath).serviceUrls['cafe-bot'], 'https://mine.internal');
+  assert.equal(store.migrateServiceUrls(legacyPath).serviceUrls['image-generator'], 'https://mine.internal');
 });
 
 test('전부 지운 뒤에도 예전 파일을 다시 읽지 않는다', () => {
   const { store, dir } = makeStore();
-  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'image-generator': 'https://legacy.internal' }));
   store.migrateServiceUrls(legacyPath);
-  store.setServiceUrls({ 'cafe-bot': '' });
+  store.setServiceUrls({ 'image-generator': '' });
 
   assert.deepEqual(store.migrateServiceUrls(legacyPath).serviceUrls, {});
 });
@@ -225,15 +225,15 @@ test('깨진 예전 파일은 던지지 않고 다음 기회를 남긴다', () =
 test('스킴이 없는 주소는 저장하지 않는다', () => {
   const { store } = makeStore();
   const { serviceUrls, services } = store.setServiceUrls({
-    'cafe-bot': 'javascript:alert(1)',
+    'image-generator': 'javascript:alert(1)',
     'sheet-app': 'cafe.internal',
     'dabut-app': 'https://dabut.internal/',
   });
 
-  assert.equal(Object.hasOwn(serviceUrls, 'cafe-bot'), false);
+  assert.equal(Object.hasOwn(serviceUrls, 'image-generator'), false);
   assert.equal(Object.hasOwn(serviceUrls, 'sheet-app'), false);
   assert.equal(serviceUrls['dabut-app'], 'https://dabut.internal');
-  assert.equal(urlOf(services, 'cafe-bot'), defaultUrlOf('cafe-bot'));
+  assert.equal(urlOf(services, 'image-generator'), defaultUrlOf('image-generator'));
 });
 
 test('예전 파일의 API 주소는 카탈로그가 아니라 endpoints 빈칸을 채운다', () => {
@@ -241,7 +241,7 @@ test('예전 파일의 API 주소는 카탈로그가 아니라 endpoints 빈칸�
   const legacyPath = writeLegacy(
     dir,
     JSON.stringify({
-      'cafe-bot': 'https://cafe.internal',
+      'image-generator': 'https://image.internal',
       'dabut-api': 'https://api.internal',
       'scheduler-api': 'https://sch.internal',
     }),
@@ -268,7 +268,7 @@ test('이관이 비밀값을 날리지 않는다', () => {
   const { store, dir } = makeStore();
   store.setApiKey('sk-or-v1-secret');
   store.setSchedulerToken('jwt-token-value', '테스트계정');
-  const legacyPath = writeLegacy(dir, JSON.stringify({ 'cafe-bot': 'https://legacy.internal' }));
+  const legacyPath = writeLegacy(dir, JSON.stringify({ 'image-generator': 'https://legacy.internal' }));
 
   store.migrateServiceUrls(legacyPath);
 

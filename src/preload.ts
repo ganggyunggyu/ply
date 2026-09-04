@@ -44,6 +44,7 @@ const browserApi = {
   loginDabut: (input: { username: string; password: string }) =>
     ipcRenderer.invoke('service:login', input),
   logoutDabut: () => ipcRenderer.invoke('service:logout'),
+  setViroToken: (token: string) => ipcRenderer.invoke('viro:setToken', token),
   answerDabutLogin: (id: number, result: string) =>
     ipcRenderer.invoke('agent:dabutLoginDone', id, result),
   onDabutLoginRequest: (callback: (payload: { id: number; reason: string }) => void) =>

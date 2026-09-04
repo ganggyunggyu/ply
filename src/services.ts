@@ -66,14 +66,6 @@ export const SERVICE_CATALOG: ServiceEntry[] = [
     auth: 'cookie',
     description: '원고에 넣을 이미지를 만든다.',
   },
-  {
-    key: 'cafe-bot',
-    name: '카페봇',
-    url: 'https://cafe-bot-two.vercel.app',
-    kind: 'ui',
-    auth: 'cookie',
-    description: '네이버 카페 글·댓글 자동화 대시보드.',
-  },
 ];
 
 /** 모듈이 처음 로드된 시점의 코드 기본값. applyServiceUrls 가 되돌릴 기준점이다. */

@@ -162,6 +162,11 @@ export const SETTINGS = {
   serviceLoginLabel: '로그인',
   serviceLoggedIn: (label: string) => `${label} 으로 로그인됨`,
   serviceLoginHint: '비밀번호는 저장 안 해요. 받은 토큰만 이 컴퓨터에 암호화해 둬요.',
+  viroTokenSaved: '바이로 토큰 저장됨',
+  viroTokenHint: '바이로에서 발급한 에이전트 토큰. 다붓 로그인과 별개예요.',
+  viroTokenField: '바이로 토큰',
+  viroTokenPlaceholder: '바이로 에이전트 토큰',
+  viroTokenSaveLabel: '저장',
   exposurePathMissing: '노출체크 저장소 경로를 입력해 주세요.',
 } as const;
 

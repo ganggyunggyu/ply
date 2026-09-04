@@ -56,6 +56,9 @@ const schUserEl = document.getElementById('sch-user') as HTMLInputElement;
 const schPassEl = document.getElementById('sch-pass') as HTMLInputElement;
 const schLoginEl = document.getElementById('sch-login') as HTMLButtonElement;
 const schStatusEl = document.getElementById('sch-status') as HTMLElement;
+const viroTokenEl = document.getElementById('viro-token') as HTMLInputElement;
+const viroSaveEl = document.getElementById('viro-save') as HTMLButtonElement;
+const viroStatusEl = document.getElementById('viro-status') as HTMLElement;
 const logEl = document.getElementById('log') as HTMLElement;
 const composerEl = document.getElementById('composer') as HTMLFormElement;
 const promptEl = document.getElementById('prompt') as HTMLTextAreaElement;
@@ -938,6 +941,7 @@ const requestAgentDabutLogin = ({ id, reason }: { id: number; reason: string }) 
       try {
         const settings = await api.loginDabut({ username: username.trim(), password });
         renderSchedulerStatus(settings);
+  renderViroStatus(settings);
         void refreshServiceChip();
         appendEntry(CHAT.roleAgent, ONBOARDING.serviceLoginSaved(settings.schedulerLabel));
         await finish(`로그인 성공: ${settings.schedulerLabel}`);
@@ -1084,6 +1088,7 @@ const requestServiceLogin = (lead: string) => {
         const settings = await api.loginDabut({ username: username.trim(), password });
         appendEntry(CHAT.roleAgent, ONBOARDING.serviceLoginSaved(settings.schedulerLabel));
         renderSchedulerStatus(settings);
+  renderViroStatus(settings);
         void refreshServiceChip();
         requestCookieLogin();
         return true;
@@ -1199,6 +1204,26 @@ const renderSchedulerStatus = (settings: PublicSettings) => {
     : SETTINGS.serviceLoginHint;
 };
 
+const renderViroStatus = (settings: PublicSettings) => {
+  viroStatusEl.textContent = settings.hasViroToken
+    ? SETTINGS.viroTokenSaved
+    : SETTINGS.viroTokenHint;
+};
+
+const handleViroTokenSave = async () => {
+  viroSaveEl.disabled = true;
+
+  try {
+    // 값을 지우고 저장하면 토큰이 삭제된다. 빈 칸을 막지 않는 이유다.
+    renderViroStatus(await api.setViroToken(viroTokenEl.value.trim()));
+    viroTokenEl.value = '';
+  } catch (error) {
+    viroStatusEl.textContent = readableError(error);
+  } finally {
+    viroSaveEl.disabled = false;
+  }
+};
+
 const handleSchedulerLogin = async () => {
   const username = schUserEl.value.trim();
   if (!username || !schPassEl.value) return;
@@ -1209,6 +1234,7 @@ const handleSchedulerLogin = async () => {
     const settings = await api.loginDabut({ username, password: schPassEl.value });
     schPassEl.value = '';
     renderSchedulerStatus(settings);
+  renderViroStatus(settings);
     void refreshServiceChip();
   } catch (error) {
     schStatusEl.textContent = readableError(error);
@@ -1282,6 +1308,7 @@ const PLACEHOLDERS: Record<string, string> = {
   composerPlaceholder: CHAT.composerPlaceholder,
   serviceUserPlaceholder: SETTINGS.serviceUserPlaceholder,
   servicePassPlaceholder: SETTINGS.servicePassPlaceholder,
+  viroTokenPlaceholder: SETTINGS.viroTokenPlaceholder,
 };
 
 const shortModel = (id: string) => id.split('/').pop() ?? id;
@@ -1332,6 +1359,8 @@ const applyStaticLabels = () => {
   set('endpoint-hint', SETTINGS.endpointsHint);
   set('lbl-scheduler', SETTINGS.serviceLoginField);
   set('sch-login', SETTINGS.serviceLoginLabel);
+  set('lbl-viro', SETTINGS.viroTokenField);
+  set('viro-save', SETTINGS.viroTokenSaveLabel);
   set('lbl-accounts', PANEL.accountsField);
   set('add-account', PANEL.accountAddLabel);
   set('account-hint', ONBOARDING.accountHint);
@@ -1377,6 +1406,7 @@ const init = async () => {
 
   renderChips(settings);
   renderSchedulerStatus(settings);
+  renderViroStatus(settings);
   void refreshServiceChip();
 
   settingsEl.hidden = true;
@@ -1415,6 +1445,7 @@ agentModelEl.addEventListener('change', handleAgentModelChange);
 writerModelEl.addEventListener('change', handleWriterModelChange);
 saveEndpointsEl.addEventListener('click', handleSaveEndpoints);
 schLoginEl.addEventListener('click', handleSchedulerLogin);
+viroSaveEl.addEventListener('click', handleViroTokenSave);
 schPassEl.addEventListener('keydown', handleSchedulerPassKeydown);
 addAccountEl.addEventListener('click', handleAddAccount);
 composerEl.addEventListener('submit', handleSubmit);

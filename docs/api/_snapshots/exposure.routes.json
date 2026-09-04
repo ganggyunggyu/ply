@@ -1,6 +1,6 @@
 {
   "source": "../blog-cron-bot/dashboard/src/app/api",
-  "generatedAt": "2026-09-03T09:32:27.941Z",
+  "generatedAt": "2026-09-04T07:10:56.081Z",
   "routes": {
     "/api/accounts": [
       "GET",

@@ -19,6 +19,7 @@ const outDir = join(root, 'docs', 'api', '_snapshots');
 const DABUT_OPENAPI = 'https://blog-analyzer.fly.dev/openapi.json';
 const EXPOSURE_REPO = '/Users/ganggyunggyu/Programing/blog-cron-bot';
 const SCHEDULER_REPO = '/Users/ganggyunggyu/Programing/21lab/blog-bot/scheduler-server';
+const VIRO_REPO = '/Users/ganggyunggyu/Programing/cafe-bot';
 
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
 
@@ -74,9 +75,9 @@ const walk = (dir, matches) =>
  * 노출지기는 Next.js App Router 다. route.ts 의 export 된 HTTP 동사가 곧 라우트이고
  * 파일 경로가 곧 URL 이다. [id] 는 openapi 표기에 맞춰 {id} 로 바꾼다.
  */
-const syncExposure = () => {
-  const apiDir = join(EXPOSURE_REPO, 'dashboard', 'src', 'app', 'api');
-  if (!existsSync(apiDir)) throw new Error(`[api-sync] 노출지기 저장소가 없다: ${apiDir}`);
+/** Next.js App Router 는 디렉터리가 곧 경로다. route.ts 에서 내보낸 메서드를 긁는다. */
+const syncNextApp = (name, apiDir, missingMessage) => {
+  if (!existsSync(apiDir)) throw new Error(missingMessage);
 
   const routes = {};
 
@@ -95,8 +96,22 @@ const syncExposure = () => {
     routes[path === '/api/.' ? '/api' : path] = methods;
   });
 
-  writeSnapshot('exposure', routes, relative(root, apiDir));
+  writeSnapshot(name, routes, relative(root, apiDir));
 };
+
+const syncExposure = () =>
+  syncNextApp(
+    'exposure',
+    join(EXPOSURE_REPO, 'dashboard', 'src', 'app', 'api'),
+    `[api-sync] 노출지기 저장소가 없다: ${join(EXPOSURE_REPO, 'dashboard', 'src', 'app', 'api')}`,
+  );
+
+const syncViro = () =>
+  syncNextApp(
+    'viro',
+    join(VIRO_REPO, 'src', 'app', 'api'),
+    `[api-sync] 바이로 저장소가 없다: ${join(VIRO_REPO, 'src', 'app', 'api')}`,
+  );
 
 /**
  * 스케줄러는 fastify 다. openapi 문서가 없다(/openapi.json, /api-docs 둘 다 401).
@@ -125,4 +140,5 @@ const syncScheduler = () => {
 await syncDabut();
 syncExposure();
 syncScheduler();
+syncViro();
 console.log('[api-sync] 스냅샷 갱신 완료');

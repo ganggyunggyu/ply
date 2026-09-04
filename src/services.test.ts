@@ -38,7 +38,7 @@ test('이름으로 찾는다', () => {
   assert.equal(findService('노출지기')?.key, 'exposure-dashboard');
   assert.equal(findService('노출지기 대시보드')?.key, 'exposure-dashboard');
   assert.equal(findService('exposure-dashboard')?.key, 'exposure-dashboard');
-  assert.equal(findService('카페봇')?.key, 'cafe-bot');
+  assert.equal(findService('이미지 생성기')?.key, 'image-generator');
 });
 
 test('모르는 이름은 null', () => {
@@ -56,13 +56,13 @@ test('주소를 안 넣어도 코드 기본값으로 열 수 있다', (t) => {
 });
 
 test('요약에는 사용자가 넣은 주소가 기본값을 이긴다', (t) => {
-  withOverrides({ 'cafe-bot': 'https://cafe.internal' }, t);
+  withOverrides({ 'image-generator': 'https://image.internal' }, t);
 
   const summary = catalogSummary();
 
-  assert.ok(summary.includes('https://cafe.internal'));
+  assert.ok(summary.includes('https://image.internal'));
   assert.equal(summary.includes('example.com'), false);
-  assert.equal(isServiceConfigured('cafe-bot'), true);
+  assert.equal(isServiceConfigured('image-generator'), true);
   assert.equal(isServiceConfigured('sheet-app'), true);
 });
 
@@ -70,23 +70,23 @@ test('주소를 지우면 코드 기본값으로 돌아간다', (t) => {
   const [first] = SERVICE_CATALOG;
   const fallback = first?.url ?? '';
 
-  withOverrides({ 'cafe-bot': 'https://cafe.internal' }, t);
+  withOverrides({ 'image-generator': 'https://image.internal' }, t);
   applyServiceUrls({});
 
-  assert.equal(isServiceConfigured('cafe-bot'), true);
+  assert.equal(isServiceConfigured('image-generator'), true);
   assert.notEqual(
-    SERVICE_CATALOG.find((service) => service.key === 'cafe-bot')?.url,
-    'https://cafe.internal',
+    SERVICE_CATALOG.find((service) => service.key === 'image-generator')?.url,
+    'https://image.internal',
   );
   assert.equal(SERVICE_CATALOG[0]?.url, fallback);
 });
 
 test('resolveServices 는 카탈로그를 변이시키지 않는다', () => {
   const before = SERVICE_CATALOG.map(({ url }) => url);
-  const resolved = resolveServices({ 'cafe-bot': 'https://cafe.internal' });
+  const resolved = resolveServices({ 'image-generator': 'https://image.internal' });
 
-  assert.equal(resolved.find((s) => s.key === 'cafe-bot')?.url, 'https://cafe.internal');
-  assert.equal(resolved.find((s) => s.key === 'cafe-bot')?.custom, true);
+  assert.equal(resolved.find((s) => s.key === 'image-generator')?.url, 'https://image.internal');
+  assert.equal(resolved.find((s) => s.key === 'image-generator')?.custom, true);
   assert.deepEqual(SERVICE_CATALOG.map(({ url }) => url), before);
 });
 
@@ -94,8 +94,8 @@ test('applyServiceUrls 는 왕복 가능하다', (t) => {
   const before = SERVICE_CATALOG.map(({ url }) => url);
   t.after(() => applyServiceUrls({}));
 
-  applyServiceUrls({ 'cafe-bot': 'https://cafe.internal' });
-  assert.equal(SERVICE_CATALOG.find((s) => s.key === 'cafe-bot')?.url, 'https://cafe.internal');
+  applyServiceUrls({ 'image-generator': 'https://image.internal' });
+  assert.equal(SERVICE_CATALOG.find((s) => s.key === 'image-generator')?.url, 'https://image.internal');
 
   applyServiceUrls({});
   assert.deepEqual(SERVICE_CATALOG.map(({ url }) => url), before);

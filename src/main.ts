@@ -378,6 +378,7 @@ const runAgent = async (userMessage: string, history: ChatMessage[]) => {
     writerModel,
     getEndpoints: () => settingsStore().readEndpoints(),
     getSchedulerToken: () => settingsStore().readSchedulerToken() ?? undefined,
+    getViroToken: () => settingsStore().readViroToken() ?? undefined,
     getCookieNames,
     onProgress: (message) => sendToPanel('agent:progress', message),
     askUser,
@@ -497,6 +498,9 @@ const registerIpcHandlers = () => {
     return store.setSchedulerToken(token, label);
   });
   ipcMain.handle('service:logout', () => settingsStore().setSchedulerToken('', ''));
+
+  ipcMain.handle('viro:setToken', (_event, token: unknown) =>
+    settingsStore().setViroToken(String(token ?? '').trim()));
   ipcMain.handle('agent:dabutLoginDone', (_event, id: number, result: string) =>
     dabutLogins.settle(id, result),
   );

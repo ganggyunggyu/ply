@@ -1,0 +1,75 @@
+{
+  "source": "../cafe-bot/src/app/api",
+  "generatedAt": "2026-09-04T07:10:56.086Z",
+  "routes": {
+    "/api/accounts": [
+      "GET"
+    ],
+    "/api/agent/accounts": [
+      "POST"
+    ],
+    "/api/agent/cafes": [
+      "GET"
+    ],
+    "/api/agent/captcha": [
+      "POST"
+    ],
+    "/api/agent/claim": [
+      "POST"
+    ],
+    "/api/agent/context": [
+      "POST"
+    ],
+    "/api/agent/heartbeat": [
+      "POST"
+    ],
+    "/api/agent/jobs": [
+      "GET"
+    ],
+    "/api/agent/jobs/{jobId}": [
+      "GET"
+    ],
+    "/api/agent/jobs/{jobId}/cancel": [
+      "POST"
+    ],
+    "/api/agent/login": [
+      "POST"
+    ],
+    "/api/agent/plan": [
+      "POST"
+    ],
+    "/api/agent/pool": [
+      "POST"
+    ],
+    "/api/agent/prepare": [
+      "POST"
+    ],
+    "/api/agent/result": [
+      "POST"
+    ],
+    "/api/agent/scan/low-comment": [
+      "POST"
+    ],
+    "/api/agent/scan/replacement": [
+      "POST"
+    ],
+    "/api/agent/scan/replacement/queue": [
+      "POST"
+    ],
+    "/api/agent/sync": [
+      "POST"
+    ],
+    "/api/agent/worker": [
+      "GET"
+    ],
+    "/api/cafes": [
+      "GET"
+    ],
+    "/api/download/viro/mac": [
+      "GET"
+    ],
+    "/api/download/viro/windows": [
+      "GET"
+    ]
+  }
+}
