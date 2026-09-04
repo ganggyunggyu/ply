@@ -18,21 +18,32 @@ import { ONBOARDING } from './messages';
  * 그 자리에 모델 문자열이 다시 들어간 것이다.
  */
 
-const panelSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), 'panel.ts'),
-  'utf8',
-);
+const panelDir = join(dirname(fileURLToPath(import.meta.url)), 'panel');
 
-const cardBlock = (fnName: string): string => {
-  const start = panelSource.indexOf(`const ${fnName} = `);
-  assert.notEqual(start, -1, `${fnName} 를 찾지 못했다`);
+const readSource = (file: string) => readFileSync(join(panelDir, file), 'utf8');
 
-  const next = panelSource.indexOf('\nconst ', start + 1);
+const panelSource = readSource('card.ts');
 
-  return panelSource.slice(start, next === -1 ? undefined : next);
+// 카드 함수는 panel/ 아래 파일 하나에 하나씩 산다. 소스를 읽는 이 테스트도 같이 옮겨야 한다.
+const CREDENTIAL_CARD_FILES: Record<string, string> = {
+  requestAgentExposureLogin: 'request-exposure-login.ts',
+  requestAgentAccountCard: 'request-account-card.ts',
 };
 
-const CREDENTIAL_CARDS = ['requestAgentExposureLogin', 'requestAgentAccountCard'];
+const cardBlock = (fnName: string): string => {
+  const file = CREDENTIAL_CARD_FILES[fnName];
+  assert.notEqual(file, undefined, `${fnName} 의 파일 위치를 못 찾았다`);
+
+  const source = readSource(file as string);
+  const start = source.indexOf(`const ${fnName} = `);
+  assert.notEqual(start, -1, `${fnName} 를 찾지 못했다`);
+
+  const next = source.indexOf('\nconst ', start + 1);
+
+  return source.slice(start, next === -1 ? undefined : next);
+};
+
+const CREDENTIAL_CARDS = Object.keys(CREDENTIAL_CARD_FILES);
 
 test('비밀번호를 받는 카드는 lead 에 모델 문자열을 쓰지 않는다', () => {
   CREDENTIAL_CARDS.forEach((fnName) => {

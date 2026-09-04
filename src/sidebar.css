@@ -218,37 +218,6 @@ section + section {
   color: var(--ink);
 }
 
-.sidebar-foot {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 9px 12px 11px;
-  border-top: 1px solid var(--line);
-}
-
-.foot-button {
-  height: 26px;
-  padding: 0 10px;
-  border-radius: var(--r-pill);
-  background: var(--hover);
-  color: var(--ink-2);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.foot-button:hover {
-  background: var(--solid);
-  color: var(--solid-ink);
-}
-
-.cdp {
-  color: var(--faint);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-}
-
 @media (prefers-color-scheme: dark) {
   .dot { background: linear-gradient(150deg, #4fbf8b, #2f8f63); }
   .tab[data-active='true'] { background: var(--card); }
@@ -259,7 +228,6 @@ section + section {
 .tab,
 .profile-button,
 .icon,
-.foot-button,
 .tab-close,
 .profile-menu button {
   transition:
@@ -271,7 +239,6 @@ section + section {
 }
 
 .tab:active,
-.foot-button:active,
 .icon:active {
   transform: scale(0.98);
 }

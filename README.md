@@ -25,21 +25,24 @@ myblog01 계정으로 강아지유치원 키워드 글 2개 초안 만들어줘
 
 ### 도구
 
-19개다.
+31개다.
 
-| 도구 | 하는 일 | 필요한 것 |
+| 분류 | 도구 | 필요한 것 |
 | --- | --- | --- |
-| `ask_user` | 부족한 값을 사용자에게 되묻는다 | 없음 |
-| `list_accounts` / `check_login` / `naver_login` | 계정 확인, 세션 점검, 로그인 | 없음 |
-| `generate_manuscript` | OpenRouter 로 원고 생성 | OpenRouter 키 |
-| `publish_blog_post` | 스마트에디터를 몰아 실제 발행 | 없음 |
-| `list_my_posts` / `delete_blog_posts` | 내 글 목록 조회, **글 삭제** | 없음 |
-| `list_services` / `open_service` | 등록해 둔 서비스 목록, 탭으로 열기 | 없음 |
-| `open_tab` | 임의 URL 을 탭으로 연다 | 없음 |
-| `check_services` | 아래 연동 서비스가 켜져 있는지 확인 | 없음 |
-| `dabut_login` / `list_dabut_projects` / `generate_manuscript_dabut` | 원고 생성 백엔드 로그인·프로젝트·원고 | 원고 생성 백엔드 |
-| `list_scheduler_accounts` / `auto_schedule_posts` | 스케줄러 계정 조회, 예약 발행 등록 | 블로그 스케줄러 |
-| `list_exposure_jobs` / `run_exposure_check` | 노출체크 작업 목록, 실행 | 노출체크 저장소 + pnpm |
+| 되묻기 | `ask_user`, `ask_user_form` | 없음 |
+| 계정 | `list_accounts`, `check_login`, `naver_login`, `manage_naver_account` | 없음 |
+| 원고 | `generate_manuscript` | OpenRouter 키 |
+| 블로그 | `publish_blog_post`, `list_my_posts`, `delete_blog_posts` | 없음 |
+| 카페 | `join_naver_cafe`, `write_cafe_comment` | 보안문자가 뜨면 블로그 스케줄러 |
+| 탭·서비스 | `list_services`, `open_service`, `open_tab`, `check_services` | 없음 |
+| 조회 | `read_api_doc`, `api_get` | 서비스별 토큰 |
+| 원고 생성 백엔드 | `dabut_login`, `list_dabut_projects`, `generate_manuscript_dabut`, `update_dabut_project` | 원고 생성 백엔드 |
+| 예약 발행 | `list_scheduler_accounts`, `auto_schedule_posts`, `list_schedules`, `get_schedule`, `cancel_schedule` | 블로그 스케줄러 |
+| 노출체크 | `exposure_login`, `list_exposure_jobs`, `run_exposure_check`, `update_exposure_preset` | 노출체크 저장소 또는 대시보드 |
+
+`api_get` 은 읽기 전용이다. 경로 허용목록에 있는 것만 통과하고, 값을 바꾸는 요청은 보낼 수 없다.
+인증 토큰은 앱이 붙이므로 모델이 넣지 않는다. `read_api_doc` 은 각 연동 서비스의 사용법 문서를
+모델에게 넘긴다 — 주소를 지어내지 않게 하려는 것이다.
 
 `delete_blog_posts` 는 되돌릴 수 없어서 프롬프트가 아니라 코드로 막아 뒀다. 같은 실행에서
 `list_my_posts` 가 돌려준 logNo 만 받고, 승인 토큰 정확일치 전에는 탭도 열지 않는다.
@@ -49,15 +52,20 @@ myblog01 계정으로 강아지유치원 키워드 글 2개 초안 만들어줘
 
 | 기능 | 서비스 | 기본 주소 |
 | --- | --- | --- |
-| 원고 생성(고품질) | 원고 생성 백엔드 | `http://127.0.0.1:8000` |
-| 예약 발행 | 블로그 스케줄러 | `http://127.0.0.1:3000` |
-| 노출체크 | 노출체크 저장소 | 패널 설정에서 경로 지정 |
+| 원고 생성(고품질) | 원고 생성 백엔드 | `src/hub.ts` 의 `DEFAULT_ENDPOINTS` |
+| 예약 발행 | 블로그 스케줄러 | 〃 |
+| 노출체크 | 노출체크 대시보드 또는 로컬 저장소 경로 | 〃 (경로는 패널 설정에서 지정) |
+| 카페 댓글 작업 | 카페 봇 | 〃 |
 
 **이 서비스들은 없어도 된다.** 핵심 흐름(계정 등록 → 로그인 → 원고 생성 → 블로그 글쓰기)은
 OpenRouter 키 하나만 있으면 외부 서비스 없이 전부 돈다. 예약 발행과 노출체크만 위 서비스를 요구하고,
 그건 이 저장소에 들어 있지 않은 별도의 비공개 프로젝트다. 주소는 패널 설정에서 직접 넣는다.
 
-`src/services.ts` 의 주소는 전부 `example.com` 플레이스홀더다. 자기 주소로 바꿔서 쓴다.
+주소는 `src/hub.ts` 의 `DEFAULT_ENDPOINTS` 와 `src/services.ts` 에 박혀 있다. 포크해서 쓸 때는
+자기 주소로 바꾼다. 패널 설정에서 실행 중에 덮어쓸 수도 있다.
+
+카페 봇은 화면 없이 API 로만 붙는다. 나머지 셋과 달리 자기가 발급한 에이전트 토큰을 쓰고,
+패널 설정에 그 토큰을 넣어야 `api_get` 이 통한다.
 
 ## 왜 만들었나
 

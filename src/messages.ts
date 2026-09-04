@@ -59,9 +59,9 @@ export const MIGRATION = {
 export const EMPTY_STATE = {
   title: '에이전트',
   samples: [
-    'myblog01 계정 로그인해줘',
+    'myblog01 계정으로 로그인해줘',
     '강아지유치원 키워드로 글 2개 초안 만들어줘',
-    '서비스 상태 확인해줘',
+    '마라탕탕 카페 가입하고 댓글 하나 달아줘',
   ],
 } as const;
 
@@ -132,9 +132,6 @@ export const SIDEBAR = {
   newTabLabel: '새 탭',
   newTabTitle: '새 탭 (⌘T)',
   profileLabel: '프로필',
-  panelToggleLabel: '에이전트 패널',
-  cdpOn: (port: number) => `CDP ${port}`,
-  cdpOff: 'CDP 꺼짐',
 } as const;
 
 export const TOOLBAR = {
@@ -147,6 +144,9 @@ export const TOOLBAR = {
 } as const;
 
 export const SETTINGS = {
+  modelSearchPlaceholder: '모델 검색',
+  modelPickerSettings: '설정에서 더 보기',
+  modelPickerEmpty: '맞는 모델이 없습니다',
   keyStatusSaved: '키 등록됨',
   keyStatusMissing: '키를 먼저 저장하세요',
   accountsEmpty: '등록된 계정 없음',
@@ -354,6 +354,9 @@ export const CONFIRM = {
 } as const;
 
 export const PROGRESS = {
+  cafeJoinStarting: (name: string) => `${name} 카페 가입을 시작합니다`,
+  cafeCommentStarting: (articleId: string) => `${articleId} 번 글에 댓글을 답니다`,
+  cafeStep: (step: string) => step,
   loginTabOpening: (label: string) => `${label} 로그인 탭 여는 중`,
   loginFilling: '로그인 정보 입력 중',
   manuscriptGenerating: (keyword: string) => `원고 생성 중: ${keyword}`,

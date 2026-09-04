@@ -261,7 +261,7 @@ small,
 
 .composer:focus-within {
   background: var(--card);
-  box-shadow: 0 0 0 1.5px var(--blue), var(--shadow-card);
+  box-shadow: var(--shadow-card);
 }
 
 .composer textarea {
@@ -953,4 +953,109 @@ button.chip:hover {
 .card-field.invalid input,
 .card-field.invalid select {
   color: #d4383d;
+}
+
+/* ---------- 모델 고르개 ---------- */
+
+/* .chips 는 overflow:hidden 이라 그 밖으로 못 나간다. 잘리지 않는 composer-foot 을 기준으로 잡는다. */
+.composer-foot {
+  position: relative;
+}
+
+.model-picker {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 8px;
+  z-index: 40;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.22);
+  animation: enter-up 140ms var(--ease) both;
+}
+
+.picker-search {
+  height: 30px;
+  padding: 0 8px;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.picker-search:focus {
+  outline: none;
+}
+
+.picker-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px 0;
+  gap: 1px;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.picker-row:hover {
+  background: var(--hover);
+}
+
+.picker-row[data-selected='true'] .picker-meta {
+  color: var(--ink);
+}
+
+.picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-meta {
+  flex: none;
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.picker-empty {
+  margin: 0;
+  padding: 10px 8px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.picker-settings {
+  height: 30px;
+  padding: 0 8px;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.picker-settings:hover {
+  color: var(--ink);
 }

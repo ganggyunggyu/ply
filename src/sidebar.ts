@@ -14,8 +14,6 @@ const agentHeadEl = document.getElementById('agent-head') as HTMLButtonElement;
 const agentListEl = document.getElementById('agent-list') as HTMLUListElement;
 const agentCountEl = document.getElementById('agent-count') as HTMLSpanElement;
 const agentChevEl = document.getElementById('agent-chev') as HTMLSpanElement;
-const togglePanelEl = document.getElementById('toggle-panel') as HTMLButtonElement;
-const cdpEl = document.getElementById('cdp') as HTMLSpanElement;
 
 let state: BrowserStateView = { tabs: [], activeId: null };
 let profiles: Profile[] = [];
@@ -150,10 +148,6 @@ const handleAgentToggle = () => {
   render();
 };
 
-const handleTogglePanel = () => {
-  void api.togglePanel();
-};
-
 const handleState = (next: BrowserStateView) => {
   state = next;
   render();
@@ -167,7 +161,6 @@ const applyStaticLabels = () => {
 
   set('lbl-tabs', SIDEBAR.groupTabs);
   set('lbl-agent-tabs', SIDEBAR.groupAgentTabs);
-  set('toggle-panel', SIDEBAR.panelToggleLabel);
 
   newTabEl.setAttribute('aria-label', SIDEBAR.newTabLabel);
   newTabEl.title = SIDEBAR.newTabTitle;
@@ -176,10 +169,9 @@ const applyStaticLabels = () => {
 
 const init = async () => {
   applyStaticLabels();
-  const [initialState, initialProfiles, cdp] = await Promise.all([
+  const [initialState, initialProfiles] = await Promise.all([
     api.getState(),
     api.listProfiles(),
-    api.getCdpInfo(),
   ]);
 
   state = initialState;
@@ -188,14 +180,12 @@ const init = async () => {
   renderProfileMenu();
   render();
 
-  cdpEl.textContent = cdp.port > 0 ? SIDEBAR.cdpOn(cdp.port) : SIDEBAR.cdpOff;
   api.onState(handleState);
 };
 
 profileButtonEl.addEventListener('click', handleProfileToggle);
 newTabEl.addEventListener('click', handleNewTab);
 agentHeadEl.addEventListener('click', handleAgentToggle);
-togglePanelEl.addEventListener('click', handleTogglePanel);
 
 api.onAgentRunning((running) => {
   document.body.dataset.running = String(running);

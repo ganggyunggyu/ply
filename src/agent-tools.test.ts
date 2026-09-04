@@ -2878,10 +2878,10 @@ test('api_get 은 허용된 경로만 실제로 부른다', async (t) => {
   assert.equal(server.calls.some(({ url }) => url === '/api/preset'), true);
 });
 
-test('도구는 29개다', () => {
+test('도구는 31개다', () => {
   // AGENT.md 가 상한을 못박아 뒀다. 늘리려면 그 문장부터 다시 읽는다.
-  // update_dabut_project 만 더했다. 읽기는 api_get 이 /projects* 를 이미 허용한다.
-  assert.equal(createNaverTools(createStubContext().context).length, 29);
+  // 카페 가입·댓글 둘은 쓰기이고 브라우저를 몰아야 해서 api_get 으로 대신할 수 없다.
+  assert.equal(createNaverTools(createStubContext().context).length, 31);
 });
 
 test('로컬 실행도 확인 카드를 먼저 띄운다', async (t) => {

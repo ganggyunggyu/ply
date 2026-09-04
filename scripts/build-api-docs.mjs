@@ -44,7 +44,7 @@ const readStringConst = (source, name) => {
   return match[1];
 };
 
-const hub = readSource('hub.ts');
+const hub = readSource('hub/endpoints.ts');
 const constants = readSource('constants.ts');
 const enums = readSource('scheduler-enums.ts');
 const presets = readSource('exposure-preset.ts');
