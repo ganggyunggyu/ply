@@ -19,6 +19,8 @@ export const TOOL_DESCRIPTIONS = {
   generateManuscript: '키워드로 네이버 블로그 원고 한 편을 생성한다. 첫 줄이 제목, 나머지가 본문이다.',
   dabutLogin:
     '다붓 계정 로그인 카드를 띄우고 사용자가 입력을 끝낼 때까지 기다린다. 다붓 로그인이 안 되어 있으면 사용자에게 "가서 로그인하세요"라고 말하지 말고 이 도구를 부른다.',
+  updateDabutProject:
+    '다붓 프로젝트를 고친다. 보낸 항목만 바뀌고 나머지는 그대로 남는다. 스텝만 고칠 거면 스텝만 보내라. 부르기 전에 api_get 으로 /projects/{id} 를 읽어 지금 값을 확인하고, 무엇을 무엇으로 바꾸는지 사용자에게 말한 뒤에 부른다. 프로젝트 목록과 스텝 종류, 다붓에 등록된 네이버 계정은 전부 api_get 으로 읽는다.',
   listDabutProjects:
     '다붓 계정에 만들어 둔 원고 프로젝트 목록을 돌려준다. 프로젝트 하나가 곧 원고 뽑는 방식이다(모델·지침·전후 단계가 묶여 있다). 다붓으로 원고를 뽑기 전에 반드시 먼저 부른다.',
   generateManuscriptDabut:
@@ -106,6 +108,8 @@ export const PARAM_DESCRIPTIONS = {
   exposureJob: 'list_exposure_jobs 의 key',
   serviceName: '서비스 이름 또는 key. 예: 노출지기, 다붓, 시트앱, cafe-bot',
   projectId: 'list_dabut_projects 가 돌려준 프로젝트 id',
+  projectChanges:
+    '바꿀 항목만 담은 객체. 보낸 것만 바뀐다. 쓸 수 있는 키는 label, description, model, system_prompt, user_prompt_template, pre_steps, post_steps, db_category, is_active. 스텝은 [{type, config}] 배열이다.',
   loginReason: '왜 로그인이 필요한지 한 문장. 카드에 그대로 보인다',
   businessName: '업체를 고정하고 싶을 때만. 웹검색 단계가 이 업체로 검색한다',
   withImages: '이미지까지 만들지 여부. 기본은 원고만',
@@ -179,6 +183,7 @@ export const TOOL_RESULTS = {
   dabutLoginSkipped: '사용자가 로그인을 건너뛰었다. generate_manuscript 로 대체할 것.',
   dabutLoginNoAnswer:
     '사용자가 다붓 로그인 카드에 답하지 않아 시간이 지났다. 로그인되지 않았다. 다시 부르지 말고, 다붓 로그인이 필요하다는 것을 한 줄로 알리고 멈출 것.',
+  projectChangesEmpty: '바꿀 항목이 비어 있다. changes 에 고칠 키만 담아서 다시 부를 것.',
   noDabutProjects: '이 계정에 만들어 둔 프로젝트가 없다. 다붓 앱에서 먼저 프로젝트를 만들어야 한다.',
   projectNotFound: (id: string) => `프로젝트 ${id} 를 찾지 못했다. list_dabut_projects 로 확인할 것.`,
   noSchedulerAccounts: '스케줄러에 등록된 계정이 없다.',
