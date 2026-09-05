@@ -493,8 +493,12 @@ const registerIpcHandlers = () => {
     const withAgentTab = createWithAgentTab({ tabManager, cdpPort });
     const result = await withAgentTab(
       { url: 'https://openrouter.ai/settings/keys', profileId: 'default' },
-      ({ page, keepTab }) =>
-        issueOpenRouterKey(page, 'Ply').then((outcome) => {
+      ({ page, tabId, keepTab }) =>
+        issueOpenRouterKey(page, 'Ply', (message) => {
+          // 사용자가 코드를 넣어야 하는 순간이다. 탭을 앞으로 띄워야 뭘 하라는지 보인다.
+          tabManager?.selectTab(tabId);
+          sendToPanel('openrouter:progress', message);
+        }).then((outcome) => {
           // 로그인이 필요하거나(직접 로그인) 값을 못 읽었으면(직접 복사) 그 탭을 남긴다.
           if (outcome.status === 'login_required' || outcome.status === 'manual') keepTab();
           return outcome;

@@ -203,6 +203,7 @@ export type BridgeApi = {
   listVisitHistory: () => Promise<StoredVisitView[]>;
   onLibraryChanged: (callback: () => void) => void;
   issueOpenRouterKey: () => Promise<IssueKeyResultView>;
+  onOpenRouterProgress: (callback: (message: string) => void) => void;
   listShopAccounts: () => Promise<ShopAccountView[]>;
   addShopAccount: (input: AddShopAccountView) => Promise<ShopAccountView[]>;
   removeShopAccount: (id: string) => Promise<ShopAccountView[]>;

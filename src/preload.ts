@@ -74,6 +74,8 @@ const browserApi = {
   listVisitHistory: () => ipcRenderer.invoke('history:list'),
   onLibraryChanged: (callback: () => void) => ipcRenderer.on('library:changed', () => callback()),
   issueOpenRouterKey: () => ipcRenderer.invoke('openrouter:issueKey'),
+  onOpenRouterProgress: (callback: (message: string) => void) =>
+    ipcRenderer.on('openrouter:progress', (_event, message: string) => callback(message)),
   listShopAccounts: () => ipcRenderer.invoke('shop:list'),
   addShopAccount: (input: AddShopAccountView) => ipcRenderer.invoke('shop:add', input),
   removeShopAccount: (id: string) => ipcRenderer.invoke('shop:remove', id),
