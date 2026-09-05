@@ -16,45 +16,8 @@ body {
   -webkit-app-region: drag;
 }
 
-.profile-bar {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px 8px 10px;
-}
-
-.profile-button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  height: 32px;
-  padding: 0 8px;
-  text-align: left;
-  border-radius: var(--r-md);
-}
-
-.profile-button:hover,
 .icon:hover {
   background: var(--hover);
-}
-
-.dot {
-  width: 19px;
-  height: 19px;
-  flex: none;
-  border-radius: var(--r-pill);
-  background: linear-gradient(150deg, #2f8f63, #16604a);
-  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.12);
-}
-
-.profile-name {
-  flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-weight: 550;
 }
 
 .chev {
@@ -73,33 +36,12 @@ body {
   line-height: 1;
 }
 
-.profile-menu {
-  margin: -4px 8px 10px;
-  padding: 5px;
-  border-radius: var(--r-md);
-  background: var(--card);
-  box-shadow: var(--shadow-pop);
-}
-
-.profile-menu button {
-  display: block;
-  width: 100%;
-  height: 30px;
-  padding: 0 9px;
-  text-align: left;
-  border-radius: var(--r-sm);
-}
-
-.profile-menu button:hover {
-  background: var(--hover);
-}
-
-.profile-menu .add {
-  margin-top: 3px;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 6px;
-  height: auto;
-  color: var(--dim);
+/* 탭 그룹 머리의 + : 세션 스위처를 없애고 새 탭 버튼만 여기로 옮겼다. */
+.group-head .icon {
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  font-size: 14px;
 }
 
 .lists {
@@ -219,17 +161,14 @@ section + section {
 }
 
 @media (prefers-color-scheme: dark) {
-  .dot { background: linear-gradient(150deg, #4fbf8b, #2f8f63); }
   .tab[data-active='true'] { background: var(--card); }
 }
 
 /* ---------- motion ---------- */
 
 .tab,
-.profile-button,
 .icon,
-.tab-close,
-.profile-menu button {
+.tab-close {
   transition:
     background var(--fast) var(--ease),
     color var(--fast) var(--ease),
@@ -245,11 +184,6 @@ section + section {
 
 .list li {
   animation: enter-up 160ms var(--ease) both;
-}
-
-.profile-menu {
-  animation: enter-up 140ms var(--ease) both;
-  transform-origin: top center;
 }
 
 /* 에이전트가 도는 동안 에이전트 탭 그룹에 표시 */

@@ -1,12 +1,9 @@
-import type { BrowserStateView, NaverAccount, Profile, TabSnapshotView } from './bridge';
-import { SETTINGS, SIDEBAR } from './messages';
+import type { BrowserStateView, NaverAccount, TabSnapshotView } from './bridge';
+import { SIDEBAR } from './messages';
 import { createLibrary } from './sidebar/library';
 
 const api = window.gngBrowser;
 
-const profileButtonEl = document.getElementById('profile-button') as HTMLButtonElement;
-const profileNameEl = document.getElementById('profile-name') as HTMLSpanElement;
-const profileMenuEl = document.getElementById('profile-menu') as HTMLDivElement;
 const newTabEl = document.getElementById('new-tab') as HTMLButtonElement;
 const tabListEl = document.getElementById('tab-list') as HTMLUListElement;
 const tabCountEl = document.getElementById('tab-count') as HTMLSpanElement;
@@ -28,24 +25,16 @@ const library = createLibrary(api, {
 });
 
 let state: BrowserStateView = { tabs: [], activeId: null };
-let profiles: Profile[] = [];
 let accounts: NaverAccount[] = [];
+/** 새 탭은 지금 보고 있는 탭과 같은 세션에서 연다. 계정 탭에서 + 를 누르면 그 계정으로 하나 더. */
 let currentProfileId = 'default';
 let agentCollapsed = false;
 
 /**
- * 세션 이름을 사람이 읽는 이름으로 푼다. 에이전트가 계정을 로그인할 때 profileId 로 계정 id 를 쓰기
- * 때문에(naver-login.ts), 계정 id 로 뜬 세션은 계정 이름으로 보여야 "지금 어느 계정 창인지" 가 보인다.
+ * 탭 배지에 쓸 세션 이름. 에이전트는 계정을 로그인할 때 profileId 로 계정 id 를 쓰기 때문에
+ * (naver-login.ts) 계정 id 로 뜬 세션은 계정 이름으로 보여야 어느 계정 창인지 보인다.
  */
-const labelOf = (profileId: string) => {
-  if (profileId === 'default') return SIDEBAR.generalSession;
-
-  return (
-    accounts.find(({ id }) => id === profileId)?.label ??
-    profiles.find(({ id }) => id === profileId)?.label ??
-    profileId
-  );
-};
+const labelOf = (profileId: string) => accounts.find(({ id }) => id === profileId)?.label ?? profileId;
 
 const faviconFor = (url: string) => {
   try {
@@ -121,58 +110,7 @@ const render = () => {
   agentListEl.replaceChildren(...(agentCollapsed ? [] : agentTabs.map(buildTab)));
 
   const active = state.tabs.find(({ id }) => id === state.activeId);
-  if (active) {
-    currentProfileId = active.profileId;
-    profileNameEl.textContent = labelOf(active.profileId);
-  }
-};
-
-/**
- * 세션 목록. 등록된 계정이 곧 세션이다(각자 로그인이 분리돼 있다). 그 뒤에 사용자가 손으로 만든
- * 커스텀 프로필, 마지막에 아무 계정에도 안 묶인 일반 브라우징 세션을 둔다. "기본" 이라는 빈 이름
- * 대신 실제 계정 이름이 떠서 지금 어느 창인지 바로 보인다.
- */
-const sessionEntries = (): { id: string; label: string }[] => {
-  const accountSessions = accounts.map(({ id, label }) => ({ id, label }));
-  const customProfiles = profiles.filter(({ id }) => id !== 'default').map(({ id, label }) => ({ id, label }));
-
-  return [...accountSessions, ...customProfiles, { id: 'default', label: SIDEBAR.generalSession }];
-};
-
-const renderProfileMenu = () => {
-  const entries = sessionEntries().map(({ id, label }) => {
-    const button = document.createElement('button');
-    button.textContent = label;
-
-    const handlePick = () => {
-      currentProfileId = id;
-      profileNameEl.textContent = label;
-      profileMenuEl.hidden = true;
-      void api.createTab({ profileId: id });
-    };
-
-    button.addEventListener('click', handlePick);
-    return button;
-  });
-
-  const add = document.createElement('button');
-  add.className = 'add';
-  add.textContent = SIDEBAR.addProfileLabel;
-
-  const handleAdd = async () => {
-    const label = prompt(SETTINGS.profilePrompt);
-    if (!label) return;
-
-    profiles = await api.addProfile(label);
-    renderProfileMenu();
-  };
-
-  add.addEventListener('click', handleAdd);
-  profileMenuEl.replaceChildren(...entries, add);
-};
-
-const handleProfileToggle = () => {
-  profileMenuEl.hidden = !profileMenuEl.hidden;
+  if (active) currentProfileId = active.profileId;
 };
 
 const handleNewTab = () => {
@@ -203,25 +141,15 @@ const applyStaticLabels = () => {
 
   newTabEl.setAttribute('aria-label', SIDEBAR.newTabLabel);
   newTabEl.title = SIDEBAR.newTabTitle;
-  profileButtonEl.setAttribute('aria-label', SIDEBAR.profileLabel);
 };
 
 const init = async () => {
   applyStaticLabels();
-  const [initialState, initialProfiles, initialAccounts] = await Promise.all([
-    api.getState(),
-    api.listProfiles(),
-    api.listAccounts(),
-  ]);
+  const [initialState, initialAccounts] = await Promise.all([api.getState(), api.listAccounts()]);
 
   state = initialState;
-  profiles = initialProfiles;
   accounts = initialAccounts;
 
-  // 활성 탭이 아직 없으면 프로필 이름 칸이 비어 보인다. 일반 세션 이름으로 채워 둔다.
-  if (!state.tabs.some(({ id }) => id === state.activeId)) profileNameEl.textContent = SIDEBAR.generalSession;
-
-  renderProfileMenu();
   render();
   void library.load();
 
@@ -229,7 +157,6 @@ const init = async () => {
   api.onLibraryChanged(() => void library.load());
 };
 
-profileButtonEl.addEventListener('click', handleProfileToggle);
 newTabEl.addEventListener('click', handleNewTab);
 agentHeadEl.addEventListener('click', handleAgentToggle);
 
