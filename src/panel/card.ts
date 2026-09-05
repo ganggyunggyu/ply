@@ -15,6 +15,8 @@ export const appendCard = ({
   chips,
   onSubmit,
   onSkip,
+  onSkipAsync,
+  skipPrimary,
 }: CardOptions) => {
   clearEmptyState();
   removeThinking();
@@ -98,6 +100,12 @@ export const appendCard = ({
   go.className = 'go';
   go.textContent = submitLabel;
 
+  // 자동 발급처럼 건너뛰기 자리가 주된 행동이면 그쪽을 강조하고 제출은 보조로 내린다.
+  if (skipPrimary) {
+    skip.className = 'go';
+    go.className = 'link';
+  }
+
   actions.append(skip, go);
   foot.append(hintEl, actions);
   box.append(errorEl, foot);
@@ -125,9 +133,31 @@ export const appendCard = ({
   go.addEventListener('click', () => {
     void submit();
   });
+  const setHint = (message: string) => {
+    hintEl.textContent = message;
+  };
+
   skip.addEventListener('click', () => {
-    entry.remove();
-    onSkip?.();
+    if (!onSkipAsync) {
+      entry.remove();
+      onSkip?.();
+      return;
+    }
+
+    // 시간이 걸리는 동작. 카드를 두고 두 버튼을 잠근 채 끝을 기다린다. 실패하면 카드가 남아 다시 누를 수 있다.
+    void (async () => {
+      skip.disabled = true;
+      go.disabled = true;
+      setError('');
+
+      try {
+        const done = await onSkipAsync(setError, setHint);
+        if (done) entry.remove();
+      } finally {
+        skip.disabled = false;
+        go.disabled = false;
+      }
+    })();
   });
   inputs.forEach((input) =>
     input.addEventListener('keydown', (event) => {

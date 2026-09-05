@@ -15,6 +15,11 @@ export const panelState = {
   usageTotal: EMPTY_USAGE as UsageTotal,
   /** 고르개가 열려 있으면 닫는 함수를 들고 있다. 칩을 다시 누르면 이걸로 닫는다. */
   closeModelPicker: null as (() => void) | null,
+  /**
+   * 키 자동 발급의 중간 안내를 받을 곳. 설정 화면은 항상 받고, 첫 실행 카드가 떠 있을 때는 카드도 받는다.
+   * 카드가 발급을 시작할 때 걸고 끝나면 푼다.
+   */
+  keyProgressSink: null as ((message: string) => void) | null,
 };
 
 

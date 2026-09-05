@@ -6,6 +6,7 @@ import { panelState } from './state';
 // '발급받는 중…' 만 띄워 두면 사용자가 뭘 해야 하는지 모른다. 모듈 로드 시 한 번만 구독한다.
 api.onOpenRouterProgress((message) => {
   keyStatusEl.textContent = message;
+  panelState.keyProgressSink?.(message);
 });
 
 export const handleSaveKey = async () => {

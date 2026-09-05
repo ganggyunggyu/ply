@@ -5,8 +5,8 @@
  */
 
 export const ONBOARDING = {
-  askApiKeyFirst: 'OpenRouter 키를 먼저 입력해 주세요.',
-  askApiKeyMidTask: 'OpenRouter 키가 필요해요. 입력하면 작업을 이어갈게요.',
+  askApiKeyFirst: 'OpenRouter 키가 필요해요. 키 발급받기를 누르면 자동으로 만들어 저장해요. 이미 있으면 아래에 붙여 넣어 주세요.',
+  askApiKeyMidTask: 'OpenRouter 키가 필요해요. 키 발급받기를 누르면 만들어 저장하고 작업을 이어갈게요. 이미 있으면 붙여 넣어 주세요.',
   apiKeyHint: '키는 이 컴퓨터에만 저장돼요.',
   apiKeyPlaceholder: 'sk-or-v1-...',
   apiKeySaveLabel: '저장',
