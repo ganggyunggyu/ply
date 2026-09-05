@@ -28,6 +28,8 @@ export const handleIssueKey = async () => {
       keyStatusEl.textContent = ONBOARDING.apiKeyIssued;
     } else if (result.status === 'login_required') {
       keyStatusEl.textContent = ONBOARDING.apiKeyIssueLogin;
+    } else if (result.status === 'manual') {
+      keyStatusEl.textContent = result.detail;
     } else {
       keyStatusEl.textContent = ONBOARDING.apiKeyIssueFailed(result.detail);
     }

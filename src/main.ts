@@ -495,8 +495,8 @@ const registerIpcHandlers = () => {
       { url: 'https://openrouter.ai/settings/keys', profileId: 'default' },
       ({ page, keepTab }) =>
         issueOpenRouterKey(page, 'Ply').then((outcome) => {
-          // 로그인이 필요하면 그 탭을 남겨 사용자가 바로 로그인하게 한다.
-          if (outcome.status === 'login_required') keepTab();
+          // 로그인이 필요하거나(직접 로그인) 값을 못 읽었으면(직접 복사) 그 탭을 남긴다.
+          if (outcome.status === 'login_required' || outcome.status === 'manual') keepTab();
           return outcome;
         }),
     );

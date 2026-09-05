@@ -253,6 +253,7 @@ export type StoredVisitView = {
 export type IssueKeyResultView =
   | { status: 'created'; key: string }
   | { status: 'login_required' }
+  | { status: 'manual'; detail: string }
   | { status: 'failed'; detail: string };
 
 export type ShopAccountView = {
